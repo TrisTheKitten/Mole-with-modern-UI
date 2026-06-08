@@ -2,6 +2,8 @@
 
 A native macOS app for cleaning, optimizing, and monitoring your Mac. MoleUI wraps the [Mole CLI](https://github.com/tw93/Mole) in a graphical interface so you can run system maintenance without the terminal.
 
+> **Prototype build.** This is an early prototype. The bundled Mole scripts and Go modules may not match the latest [Mole](https://github.com/tw93/Mole) release. The codebase will be updated to align with Mole's current version in a future release.
+
 ## What you can do
 
 - **Clean** — Scan and remove caches, logs, and temporary files to free disk space
