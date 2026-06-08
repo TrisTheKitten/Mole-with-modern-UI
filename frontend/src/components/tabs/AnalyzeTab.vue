@@ -1,24 +1,62 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { EventsOn, EventsOff } from '../../../wailsjs/runtime/runtime'
 import {
   AnalyzeScanDirectory,
   AnalyzeGetLargeFiles,
   AnalyzeDeletePath,
-  AnalyzeOpenInFinder
+  AnalyzeOpenInFinder,
+  AnalyzePickDirectory
 } from '../../../wailsjs/go/main/App'
 import { validatePath } from '../../utils/validation'
 import { handleError } from '../../utils/errorHandler'
+import PageHeader from '../shared/PageHeader.vue'
+import TextField from '../shared/TextField.vue'
+import AppButton from '../shared/AppButton.vue'
+import CheckboxRow from '../shared/CheckboxRow.vue'
+import ActionBar from '../shared/ActionBar.vue'
+import ConfirmDialog from '../shared/ConfirmDialog.vue'
+import LoadingPanel from '../shared/LoadingPanel.vue'
+import EmptyState from '../shared/EmptyState.vue'
+import InfoRow from '../shared/InfoRow.vue'
 
-// State
 const scanPath = ref('')
 const scanning = ref(false)
 const scanProgress = ref('')
 const scanResult = ref(null)
 const largeFiles = ref([])
 const loading = ref(false)
+const showDeleteDialog = ref(false)
+const deleteTargets = ref([])
 
-// Format bytes to human readable
+const selectedFiles = computed(() => largeFiles.value.filter((file) => file.selected))
+
+const deleteDialogTitle = computed(() =>
+  deleteTargets.value.length === 1 ? 'Delete Item' : 'Delete Items'
+)
+
+const deleteDialogMessage = computed(() => {
+  if (deleteTargets.value.length === 1) {
+    return 'Delete this item permanently?'
+  }
+  return `Delete ${deleteTargets.value.length} items permanently?`
+})
+
+let unsubscribeProgress = null
+
+onMounted(() => {
+  scanPath.value = '/Users'
+  unsubscribeProgress = EventsOn('analyze:progress', (data) => {
+    scanProgress.value = data.message || 'Scanning'
+  })
+})
+
+onBeforeUnmount(() => {
+  if (unsubscribeProgress) {
+    EventsOff('analyze:progress')
+  }
+})
+
 function formatBytes(bytes) {
   if (bytes === 0) return '0 B'
   const k = 1024
@@ -27,54 +65,31 @@ function formatBytes(bytes) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
-// Event listener cleanup function
-let unsubscribeProgress = null
-
-// Initialize with home directory
-onMounted(() => {
-  // Set default scan path (use a safe default instead of process.env)
-  scanPath.value = '/Users'
-
-  // Listen for scan progress events
-  unsubscribeProgress = EventsOn('analyze:progress', (data) => {
-    scanProgress.value = data.message || 'Scanning...'
-  })
-})
-
-// Cleanup event listeners on unmount
-onBeforeUnmount(() => {
-  if (unsubscribeProgress) {
-    EventsOff('analyze:progress')
+async function loadResults() {
+  const result = await AnalyzeScanDirectory(scanPath.value)
+  if (!result) {
+    throw new Error('Scan returned no results')
   }
-})
 
-// Scan directory
+  scanResult.value = result
+  const files = await AnalyzeGetLargeFiles(scanPath.value, 20)
+  largeFiles.value = (files || []).map((file) => ({ ...file, selected: false }))
+}
+
 async function scan() {
-  const validation = validatePath(scanPath.value, true) // Pass true for scan mode
+  const validation = validatePath(scanPath.value, true)
   if (!validation.valid) {
     handleError(new Error(validation.error), 'Path Validation')
     return
   }
 
   scanning.value = true
-  scanProgress.value = 'Starting scan...'
+  scanProgress.value = 'Starting scan'
   scanResult.value = null
   largeFiles.value = []
 
   try {
-    // Scan directory
-    const result = await AnalyzeScanDirectory(scanPath.value)
-
-    if (!result) {
-      throw new Error('Scan returned no results')
-    }
-
-    scanResult.value = result
-
-    // Get large files
-    const files = await AnalyzeGetLargeFiles(scanPath.value, 20)
-    largeFiles.value = files || []
-
+    await loadResults()
     scanProgress.value = ''
   } catch (error) {
     handleError(error, 'Disk Analysis')
@@ -84,40 +99,75 @@ async function scan() {
   }
 }
 
-// Delete file or directory
-async function deleteItem(path) {
-  const validation = validatePath(path)
-  if (!validation.valid) {
-    handleError(new Error(validation.error), 'Path Validation')
-    return
+function requestDelete(paths) {
+  const targets = Array.isArray(paths) ? paths : [paths]
+
+  for (const path of targets) {
+    const validation = validatePath(path)
+    if (!validation.valid) {
+      handleError(new Error(validation.error), 'Path Validation')
+      return
+    }
   }
 
-  if (!confirm(`Are you sure you want to delete:\n${path}\n\nThis action cannot be undone!`)) {
+  deleteTargets.value = targets
+  showDeleteDialog.value = true
+}
+
+function requestDeleteSelected() {
+  if (selectedFiles.value.length === 0) {
+    handleError(new Error('Select at least one file'), 'Delete')
     return
   }
+  requestDelete(selectedFiles.value.map((file) => file.path))
+}
 
+async function confirmDelete() {
   loading.value = true
+  const targets = [...deleteTargets.value]
+  const targetSet = new Set(targets)
+
   try {
-    await AnalyzeDeletePath(path)
+    for (const path of targets) {
+      await AnalyzeDeletePath(path)
+    }
 
-    // Show success
+    largeFiles.value = largeFiles.value.filter((file) => !targetSet.has(file.path))
+    await loadResults()
+
+    const message = targets.length === 1 ? 'Item deleted' : `${targets.length} items deleted`
     window.dispatchEvent(new CustomEvent('show-toast', {
-      detail: {
-        message: 'Item deleted successfully',
-        type: 'success'
-      }
+      detail: { message, type: 'success' },
     }))
-
-    // Rescan
-    await scan()
   } catch (error) {
     handleError(error, 'Delete')
+    try {
+      await loadResults()
+    } catch (refreshError) {
+      handleError(refreshError, 'Disk Analysis')
+    }
   } finally {
     loading.value = false
+    deleteTargets.value = []
   }
 }
 
-// Open in Finder
+function toggleFile(file) {
+  file.selected = !file.selected
+}
+
+function selectAll() {
+  largeFiles.value.forEach((file) => {
+    file.selected = true
+  })
+}
+
+function deselectAll() {
+  largeFiles.value.forEach((file) => {
+    file.selected = false
+  })
+}
+
 async function openInFinder(path) {
   try {
     await AnalyzeOpenInFinder(path)
@@ -125,353 +175,219 @@ async function openInFinder(path) {
     handleError(error, 'Open in Finder')
   }
 }
+
+async function browseDirectory() {
+  try {
+    const selectedPath = await AnalyzePickDirectory(scanPath.value)
+    if (selectedPath) {
+      scanPath.value = selectedPath
+    }
+  } catch (error) {
+    handleError(error, 'Choose Folder')
+  }
+}
 </script>
 
 <template>
   <div class="analyze-tab">
-    <h1>Disk Space Analyzer</h1>
-    <p class="subtitle">Visualize and analyze disk usage</p>
+    <PageHeader
+      title="Disk Space Analyzer"
+      subtitle="Visualize and analyze disk usage"
+    />
 
-    <!-- Scan Input Section -->
-    <div class="scan-section">
-      <div class="input-group">
-        <input
-          v-model="scanPath"
-          type="text"
-          placeholder="Enter directory path to analyze"
-          class="path-input"
-          :disabled="scanning"
-        />
-        <button @click="scan" class="btn-primary" :disabled="scanning">
-          {{ scanning ? 'Scanning...' : 'Scan Directory' }}
-        </button>
-      </div>
+    <ConfirmDialog
+      v-model:show="showDeleteDialog"
+      :title="deleteDialogTitle"
+      :message="deleteDialogMessage"
+      :items="deleteTargets"
+      confirm-text="Delete"
+      cancel-text="Cancel"
+      destructive
+      @confirm="confirmDelete"
+    />
+
+    <div class="scan-controls">
+      <TextField
+        v-model="scanPath"
+        placeholder="/Users"
+        mono
+        :disabled="scanning"
+      />
+      <AppButton variant="secondary" :disabled="scanning" @click="browseDirectory">
+        Choose Folder
+      </AppButton>
+      <AppButton variant="primary" :loading="scanning" :disabled="scanning" @click="scan">
+        Scan
+      </AppButton>
     </div>
 
-    <!-- Loading State -->
-    <div v-if="scanning" class="loading">
-      <div class="spinner"></div>
-      <p class="progress-message">{{ scanProgress }}</p>
-    </div>
+    <LoadingPanel v-if="scanning" :message="scanProgress || 'Scanning'" />
 
-    <!-- Results Section -->
-    <div v-else-if="scanResult" class="results">
-      <!-- Summary Cards -->
-      <div class="summary-cards">
-        <div class="card">
-          <div class="card-label">Total Size</div>
-          <div class="card-value">{{ formatBytes(scanResult.totalSize || 0) }}</div>
+    <div v-else-if="scanResult" class="analyze-results">
+      <div class="summary-grid">
+        <div class="summary-card">
+          <span class="summary-card__label">Total Size</span>
+          <span class="summary-card__value">{{ formatBytes(scanResult.totalSize || 0) }}</span>
         </div>
-        <div class="card">
-          <div class="card-label">Total Items</div>
-          <div class="card-value">{{ (scanResult.totalItems || 0).toLocaleString() }}</div>
+        <div class="summary-card">
+          <span class="summary-card__label">Total Items</span>
+          <span class="summary-card__value">{{ (scanResult.totalItems || 0).toLocaleString() }}</span>
         </div>
-        <div class="card">
-          <div class="card-label">Scanned Path</div>
-          <div class="card-value small">{{ scanPath }}</div>
+        <div class="summary-card summary-card--wide">
+          <InfoRow label="Scanned Path" :value="scanPath" mono />
         </div>
       </div>
 
-      <!-- Large Files Table -->
       <div v-if="largeFiles.length > 0" class="files-section">
-        <h2>Largest Files (Top {{ largeFiles.length }})</h2>
-        <div class="files-table">
-          <div
-            v-for="(file, index) in largeFiles"
-            :key="index"
-            class="file-row"
-          >
-            <div class="file-info">
-              <div class="file-name">{{ file.name }}</div>
-              <div class="file-path">{{ file.path }}</div>
-            </div>
-            <div class="file-size">{{ formatBytes(file.size) }}</div>
-            <div class="file-actions">
-              <button @click="openInFinder(file.path)" class="btn-action" title="Open in Finder">
-                📁
-              </button>
-              <button
-                @click="deleteItem(file.path)"
-                class="btn-action btn-danger"
-                title="Delete"
-                :disabled="loading"
-              >
-                🗑️
-              </button>
-            </div>
+        <div class="files-section__header">
+          <h2 class="files-section__title">Largest Files</h2>
+          <div class="files-section__controls">
+            <AppButton variant="ghost" @click="selectAll">Select All</AppButton>
+            <AppButton variant="ghost" @click="deselectAll">Deselect All</AppButton>
           </div>
         </div>
+
+        <div class="files-list">
+          <CheckboxRow
+            v-for="file in largeFiles"
+            :key="file.path"
+            :title="file.name"
+            :description="file.path"
+            :size="formatBytes(file.size)"
+            :checked="file.selected"
+            @toggle="toggleFile(file)"
+          >
+            <template #trailing>
+              <AppButton variant="ghost" @click="openInFinder(file.path)">Open</AppButton>
+              <AppButton variant="ghost" :disabled="loading" @click="requestDelete(file.path)">Delete</AppButton>
+            </template>
+          </CheckboxRow>
+        </div>
+
+        <ActionBar :summary="`${selectedFiles.length} selected`">
+          <AppButton
+            variant="danger"
+            :disabled="selectedFiles.length === 0 || loading"
+            @click="requestDeleteSelected"
+          >
+            Delete Selected
+          </AppButton>
+        </ActionBar>
       </div>
 
-      <div v-else class="no-files">
-        <p>No large files found in this directory</p>
-      </div>
+      <EmptyState v-else message="No large files found in this directory" />
     </div>
 
-    <!-- Initial State -->
-    <div v-else class="initial-state">
-      <div class="initial-message">
-        <p>Enter a directory path above and click "Scan Directory" to analyze disk usage</p>
-      </div>
-    </div>
+    <EmptyState
+      v-else
+      message="Enter a path, choose a folder, or click Scan to analyze disk usage"
+    />
   </div>
 </template>
 
 <style scoped>
 .analyze-tab {
-  max-width: 1200px;
-}
-
-h1 {
-  font-size: 2rem;
-  margin: 0 0 0.5rem 0;
-}
-
-.subtitle {
-  color: #9ca3af;
-  margin: 0 0 2rem 0;
-}
-
-/* Scan Section */
-.scan-section {
-  margin-bottom: 2rem;
-}
-
-.input-group {
-  display: flex;
-  gap: 1rem;
-}
-
-.path-input {
-  flex: 1;
-  padding: 0.875rem 1rem;
-  background: #1f2937;
-  border: 2px solid #374151;
-  border-radius: 6px;
-  color: #f3f4f6;
-  font-size: 1rem;
-  transition: border-color 0.2s;
-}
-
-.path-input:focus {
-  outline: none;
-  border-color: #8b5cf6;
-}
-
-.path-input:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* Loading State */
-.loading {
-  text-align: center;
-  padding: 4rem 2rem;
-}
-
-.spinner {
-  width: 50px;
-  height: 50px;
-  border: 4px solid #374151;
-  border-top-color: #8b5cf6;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin: 0 auto 1rem;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.progress-message {
-  color: #d1d5db;
-  margin-top: 1rem;
-}
-
-/* Summary Cards */
-.summary-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 1rem;
-  margin-bottom: 2rem;
-}
-
-.card {
-  background: linear-gradient(135deg, #1f2937 0%, #374151 100%);
-  border: 2px solid #374151;
-  border-radius: 8px;
-  padding: 1.5rem;
-  transition: all 0.2s;
-}
-
-.card:hover {
-  border-color: #8b5cf6;
-  transform: translateY(-2px);
-}
-
-.card-label {
-  color: #9ca3af;
-  font-size: 0.875rem;
-  margin-bottom: 0.5rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.card-value {
-  color: #f3f4f6;
-  font-size: 1.75rem;
-  font-weight: 700;
-  background: linear-gradient(135deg, #8b5cf6, #ec4899);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.card-value.small {
-  font-size: 1rem;
-  word-break: break-all;
-}
-
-/* Files Section */
-.files-section {
-  margin-top: 2rem;
-}
-
-.files-section h2 {
-  font-size: 1.25rem;
-  margin: 0 0 1rem 0;
-  color: #f3f4f6;
-}
-
-.files-table {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  width: 100%;
+  height: 100%;
+  max-width: 900px;
 }
 
-.file-row {
+.scan-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.analyze-results {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: var(--space-4);
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-2);
+}
+
+.summary-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.summary-card--wide {
+  grid-column: 1 / -1;
+  padding: var(--space-2);
+}
+
+.summary-card__label {
+  font-size: var(--font-size-caption);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.summary-card__value {
+  font-size: var(--font-size-metric);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-primary);
+}
+
+.files-section {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.files-section__header {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 1rem;
-  background: #1f2937;
-  border: 2px solid #374151;
-  border-radius: 6px;
-  transition: all 0.2s;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
 }
 
-.file-row:hover {
-  border-color: #8b5cf6;
-  background: #283448;
-}
-
-.file-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.file-name {
-  color: #f3f4f6;
+.files-section__title {
+  margin: 0;
+  font-size: var(--font-size-body);
   font-weight: 600;
-  margin-bottom: 0.25rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  color: var(--color-text-primary);
 }
 
-.file-path {
-  color: #9ca3af;
-  font-size: 0.875rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.file-size {
-  color: #8b5cf6;
-  font-weight: 600;
-  font-size: 1rem;
-  min-width: 100px;
-  text-align: right;
-}
-
-.file-actions {
+.files-section__controls {
   display: flex;
-  gap: 0.5rem;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
 }
 
-/* Buttons */
-.btn-primary {
-  padding: 0.875rem 1.5rem;
-  border: none;
-  border-radius: 6px;
-  font-size: 1rem;
-  font-weight: 600;
-  cursor: pointer;
-  background: linear-gradient(135deg, #8b5cf6, #ec4899);
-  color: white;
-  transition: all 0.2s;
-  white-space: nowrap;
+.files-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  padding-bottom: var(--space-2);
 }
 
-.btn-primary:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
-}
-
-.btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-action {
-  padding: 0.5rem 0.75rem;
-  border: none;
-  border-radius: 4px;
-  font-size: 1.25rem;
-  cursor: pointer;
-  background: #374151;
-  transition: all 0.2s;
-}
-
-.btn-action:hover:not(:disabled) {
-  background: #4b5563;
-  transform: scale(1.1);
-}
-
-.btn-action:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-danger:hover:not(:disabled) {
-  background: #991b1b;
-}
-
-/* States */
-.initial-state {
-  text-align: center;
-  padding: 4rem 2rem;
-  background: #1f2937;
-  border-radius: 8px;
-  border: 2px dashed #374151;
-}
-
-.initial-message p {
-  color: #9ca3af;
-  font-size: 1.125rem;
-}
-
-.no-files {
-  text-align: center;
-  padding: 3rem 2rem;
-  background: #1f2937;
-  border-radius: 8px;
-  border: 2px dashed #374151;
-}
-
-.no-files p {
-  color: #9ca3af;
-  font-size: 1rem;
+.files-list :deep(.checkbox-row__trailing) {
+  display: flex;
+  gap: var(--space-1);
 }
 </style>

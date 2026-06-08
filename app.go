@@ -146,6 +146,10 @@ func (a *App) AnalyzeOpenInFinder(path string) error {
 	return a.Analyze.OpenInFinder(path)
 }
 
+func (a *App) AnalyzePickDirectory(defaultPath string) (string, error) {
+	return a.Analyze.PickDirectory(defaultPath)
+}
+
 // ===========================
 // Status Service Methods
 // ===========================

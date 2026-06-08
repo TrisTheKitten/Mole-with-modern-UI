@@ -35,6 +35,7 @@ export const useOptimizeStore = defineStore('optimize', () => {
 
     optimizing.value = true
     progress.value = 0
+    progressMessage.value = 'Starting optimization...'
     result.value = null
     error.value = null
 

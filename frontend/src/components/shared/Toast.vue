@@ -47,27 +47,33 @@ function close(id) {
 }
 
 .toast {
-  padding: 1rem 1.5rem;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-strong);
+  box-shadow: var(--shadow-panel);
+  font-size: var(--font-size-body);
+  line-height: 1.4;
   cursor: pointer;
   max-width: 400px;
   animation: slideIn 0.3s;
 }
 
 .toast.error {
-  background: #ef4444;
-  color: white;
+  background: var(--color-danger-surface);
+  color: var(--color-danger);
+  border-color: var(--color-danger-border);
 }
 
 .toast.info {
-  background: #3b82f6;
-  color: white;
+  background: var(--color-accent-subtle);
+  color: var(--color-accent);
+  border-color: var(--color-accent-border);
 }
 
 .toast.success {
-  background: #10b981;
-  color: white;
+  background: var(--color-success-surface);
+  color: var(--color-success);
+  border-color: var(--color-success-border);
 }
 
 @keyframes slideIn {

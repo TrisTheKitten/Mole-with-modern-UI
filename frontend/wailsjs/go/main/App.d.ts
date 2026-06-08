@@ -8,6 +8,8 @@ export function AnalyzeGetLargeFiles(arg1:string,arg2:number):Promise<Array<mode
 
 export function AnalyzeOpenInFinder(arg1:string):Promise<void>;
 
+export function AnalyzePickDirectory(arg1:string):Promise<string>;
+
 export function AnalyzeScanDirectory(arg1:string):Promise<models.ScanResult>;
 
 export function CleanExecute(arg1:Array<string>,arg2:boolean):Promise<void>;

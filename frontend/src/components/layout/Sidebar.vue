@@ -1,48 +1,52 @@
 <script setup>
+import NavIcon from './NavIcon.vue'
+
 defineProps({
-  activeTab: String
+  activeTab: String,
 })
 
 const emit = defineEmits(['change-tab'])
 
 const tabs = [
-  { id: 'clean', icon: '🧹', label: 'Clean' },
-  { id: 'uninstall', icon: '🗑️', label: 'Uninstall' },
-  { id: 'optimize', icon: '⚡', label: 'Optimize' },
-  { id: 'analyze', icon: '📊', label: 'Analyze' },
-  { id: 'status', icon: '📈', label: 'Status' },
-  { id: 'touchid', icon: '🔐', label: 'Touch ID' },
+  { id: 'clean', icon: 'clean', label: 'Clean' },
+  { id: 'uninstall', icon: 'uninstall', label: 'Uninstall' },
+  { id: 'optimize', icon: 'optimize', label: 'Optimize' },
+  { id: 'analyze', icon: 'analyze', label: 'Analyze' },
+  { id: 'status', icon: 'status', label: 'Status' },
+  { id: 'touchid', icon: 'touchid', label: 'Touch ID' },
 ]
 </script>
 
 <template>
   <aside class="sidebar">
-    <div class="logo">
-      <h1>MoleUI</h1>
-      <p class="tagline">Deep Clean & Optimize</p>
+    <div class="sidebar__brand">
+      <span class="sidebar__logo">MoleUI</span>
+      <span class="sidebar__tagline">Deep Clean &amp; Optimize</span>
     </div>
 
-    <nav class="nav">
+    <nav class="sidebar__nav" aria-label="Main">
       <button
         v-for="tab in tabs"
         :key="tab.id"
-        class="nav-item"
-        :class="{ active: activeTab === tab.id }"
+        class="sidebar__item"
+        :class="{ 'sidebar__item--active': activeTab === tab.id }"
+        :aria-current="activeTab === tab.id ? 'page' : undefined"
         @click="emit('change-tab', tab.id)"
       >
-        <span class="icon">{{ tab.icon }}</span>
-        <span class="label">{{ tab.label }}</span>
+        <NavIcon :name="tab.icon" />
+        <span class="sidebar__label">{{ tab.label }}</span>
       </button>
     </nav>
 
-    <div class="about">
+    <div class="sidebar__footer">
       <button
-        class="nav-item"
-        :class="{ active: activeTab === 'about' }"
+        class="sidebar__item"
+        :class="{ 'sidebar__item--active': activeTab === 'about' }"
+        :aria-current="activeTab === 'about' ? 'page' : undefined"
         @click="emit('change-tab', 'about')"
       >
-        <span class="icon">ℹ️</span>
-        <span class="label">About</span>
+        <NavIcon name="about" />
+        <span class="sidebar__label">About</span>
       </button>
     </div>
   </aside>
@@ -50,77 +54,87 @@ const tabs = [
 
 <style scoped>
 .sidebar {
-  width: 220px;
-  background: #1f2937;
+  width: 200px;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid #374151;
+  background: var(--color-bg-surface);
+  border-right: 1px solid var(--color-border);
 }
 
-.logo {
-  padding: 2rem 1.5rem;
-  border-bottom: 1px solid #374151;
+.sidebar__brand {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-4) var(--space-4) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
 }
 
-.logo h1 {
-  font-size: 1.75rem;
-  font-weight: 700;
-  margin: 0;
-  background: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+.sidebar__logo {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--color-text-primary);
+  line-height: 1.2;
 }
 
-.tagline {
-  font-size: 0.75rem;
-  color: #9ca3af;
-  margin: 0.25rem 0 0 0;
+.sidebar__tagline {
+  font-size: var(--font-size-caption);
+  color: var(--color-text-tertiary);
+  line-height: 1.3;
 }
 
-.nav {
+.sidebar__nav {
   flex: 1;
-  padding: 1rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: var(--space-2) var(--space-2);
   overflow-y: auto;
 }
 
-.nav-item {
-  width: 100%;
+.sidebar__footer {
+  padding: var(--space-2) var(--space-2) var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.sidebar__item {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.875rem 1.5rem;
-  background: transparent;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 32px;
+  padding: var(--space-2) var(--space-2);
   border: none;
-  color: #d1d5db;
-  cursor: pointer;
-  transition: all 0.2s;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-family: inherit;
+  font-size: var(--font-size-body);
+  font-weight: 400;
   text-align: left;
-  font-size: 0.9375rem;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
 }
 
-.nav-item:hover {
-  background: #374151;
-  color: #f3f4f6;
+.sidebar__item:hover {
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
 }
 
-.nav-item.active {
-  background: #8b5cf6;
-  color: #ffffff;
-  font-weight: 600;
+.sidebar__item--active {
+  background: var(--color-selection-bg);
+  color: var(--color-selection-text);
+  font-weight: 500;
 }
 
-.icon {
-  font-size: 1.25rem;
-  width: 1.5rem;
-  text-align: center;
+.sidebar__item--active:hover {
+  background: var(--color-accent-pressed);
+  color: var(--color-selection-text);
 }
 
-.label {
+.sidebar__label {
   flex: 1;
-}
-
-.about {
-  border-top: 1px solid #374151;
-  padding: 1rem 0;
+  line-height: 1.2;
 }
 </style>

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -43,6 +44,19 @@ func (cm *cacheManager) invalidate(path string) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 	delete(cm.cache, path)
+}
+
+func (cm *cacheManager) invalidateUnder(filePath string) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	cleanFile := filepath.Clean(filePath)
+	for key := range cm.cache {
+		if isPathUnderDirectory(cleanFile, key) {
+			delete(cm.cache, key)
+			invalidateCache(key)
+		}
+	}
 }
 
 type Service struct {
@@ -132,7 +146,23 @@ func (s *Service) DeletePath(path string) error {
 		return fmt.Errorf("deletion failed: %w", err)
 	}
 
+	s.cache.invalidateUnder(path)
 	return nil
+}
+
+// PickDirectory opens a native directory picker and returns the selected path
+func (s *Service) PickDirectory(defaultPath string) (string, error) {
+	opts := runtime.OpenDialogOptions{
+		Title: "Select Directory",
+	}
+
+	if defaultPath != "" {
+		if info, err := os.Stat(defaultPath); err == nil && info.IsDir() {
+			opts.DefaultDirectory = defaultPath
+		}
+	}
+
+	return runtime.OpenDirectoryDialog(s.ctx, opts)
 }
 
 // OpenInFinder opens a path in Finder
@@ -191,6 +221,22 @@ func (s *Service) convertToModelScanResult(internal *scanResult) *models.ScanRes
 	}
 
 	return result
+}
+
+func isPathUnderDirectory(filePath, dirPath string) bool {
+	cleanFile := filepath.Clean(filePath)
+	cleanDir := filepath.Clean(dirPath)
+
+	if cleanFile == cleanDir {
+		return true
+	}
+
+	rel, err := filepath.Rel(cleanDir, cleanFile)
+	if err != nil {
+		return false
+	}
+
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
 }
 
 func validatePathForDeletion(path string) error {

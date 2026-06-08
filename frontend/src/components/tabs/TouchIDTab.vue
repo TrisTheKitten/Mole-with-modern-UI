@@ -1,11 +1,20 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { TouchIDGetStatus, TouchIDEnable, TouchIDDisable } from '../../../wailsjs/go/main/App'
+import PageHeader from '../shared/PageHeader.vue'
+import AppButton from '../shared/AppButton.vue'
+import ConfirmDialog from '../shared/ConfirmDialog.vue'
+import LoadingPanel from '../shared/LoadingPanel.vue'
+import InfoRow from '../shared/InfoRow.vue'
+import StatusBadge from '../shared/StatusBadge.vue'
+import MessageBanner from '../shared/MessageBanner.vue'
 
 const loading = ref(false)
 const status = ref(null)
 const message = ref(null)
-const messageType = ref('success') // 'success' or 'error'
+const messageType = ref('success')
+const showEnableDialog = ref(false)
+const showDisableDialog = ref(false)
 
 onMounted(async () => {
   await getStatus()
@@ -18,8 +27,7 @@ async function getStatus() {
     status.value = data
     message.value = null
   } catch (error) {
-    console.error('Failed to get status:', error)
-    message.value = 'Failed to get TouchID status: ' + error
+    message.value = 'Failed to get Touch ID status: ' + error
     messageType.value = 'error'
   } finally {
     loading.value = false
@@ -27,45 +35,31 @@ async function getStatus() {
 }
 
 async function enable() {
-  if (!confirm('Enable TouchID for sudo commands? This will modify your PAM configuration.')) {
-    return
-  }
-
   loading.value = true
   message.value = null
-
   try {
     await TouchIDEnable()
-    message.value = 'TouchID enabled successfully!'
+    message.value = 'Touch ID enabled'
     messageType.value = 'success'
     await getStatus()
   } catch (error) {
-    console.error('Failed to enable:', error)
-    message.value = 'Failed to enable TouchID: ' + error
+    message.value = 'Failed to enable Touch ID: ' + error
     messageType.value = 'error'
-  } finally {
     loading.value = false
   }
 }
 
 async function disable() {
-  if (!confirm('Disable TouchID for sudo commands?')) {
-    return
-  }
-
   loading.value = true
   message.value = null
-
   try {
     await TouchIDDisable()
-    message.value = 'TouchID disabled successfully!'
+    message.value = 'Touch ID disabled'
     messageType.value = 'success'
     await getStatus()
   } catch (error) {
-    console.error('Failed to disable:', error)
-    message.value = 'Failed to disable TouchID: ' + error
+    message.value = 'Failed to disable Touch ID: ' + error
     messageType.value = 'error'
-  } finally {
     loading.value = false
   }
 }
@@ -73,78 +67,80 @@ async function disable() {
 
 <template>
   <div class="touchid-tab">
-    <h1>Touch ID Configuration</h1>
-    <p class="subtitle">Enable Touch ID for sudo commands instead of typing passwords</p>
+    <PageHeader
+      title="Touch ID Configuration"
+      subtitle="Enable Touch ID for sudo commands instead of typing passwords"
+    />
 
-    <div v-if="loading" class="loading">
-      <div class="spinner"></div>
-      <p>Loading...</p>
-    </div>
+    <ConfirmDialog
+      v-model:show="showEnableDialog"
+      title="Enable Touch ID"
+      message="This will modify your PAM configuration. Continue?"
+      confirm-text="Enable"
+      cancel-text="Cancel"
+      @confirm="enable"
+    />
 
-    <div v-else class="content">
-      <div v-if="message" class="message" :class="messageType">
-        {{ message }}
-      </div>
+    <ConfirmDialog
+      v-model:show="showDisableDialog"
+      title="Disable Touch ID"
+      message="Disable Touch ID for sudo commands?"
+      confirm-text="Disable"
+      cancel-text="Cancel"
+      destructive
+      @confirm="disable"
+    />
 
-      <div v-if="status" class="status-card">
-        <div class="status-header">
-          <h2>Current Status</h2>
-          <div class="status-badge" :class="{ enabled: status.enabled, disabled: !status.enabled }">
-            {{ status.enabled ? 'Enabled' : 'Disabled' }}
-          </div>
+    <LoadingPanel v-if="loading && !status" message="Loading status" />
+
+    <div v-else-if="status" class="touchid-content">
+      <MessageBanner v-if="message" :type="messageType" :message="message" />
+
+      <div class="status-card">
+        <div class="status-card__header">
+          <h2 class="status-card__title">Current Status</h2>
+          <StatusBadge :status="status.enabled ? 'enabled' : 'disabled'" />
         </div>
 
-        <div class="status-details">
-          <div class="detail-item">
-            <span class="detail-label">TouchID Available:</span>
-            <span class="detail-value">{{ status.available ? 'Yes' : 'No' }}</span>
-          </div>
-          <div class="detail-item">
-            <span class="detail-label">PAM Module:</span>
-            <span class="detail-value">{{ status.pamModulePath || 'Not found' }}</span>
-          </div>
-          <div class="detail-item">
-            <span class="detail-label">Configuration:</span>
-            <span class="detail-value">{{ status.configPath || 'Not configured' }}</span>
-          </div>
+        <div class="status-card__rows">
+          <InfoRow label="Touch ID Available" :value="status.available ? 'Yes' : 'No'" />
+          <InfoRow label="PAM Module" :value="status.pamModulePath || 'Not found'" mono />
+          <InfoRow label="Configuration" :value="status.configPath || 'Not configured'" mono />
         </div>
 
-        <div class="info-box">
-          <h3>How it works</h3>
-          <p>
-            When enabled, this feature allows you to use Touch ID instead of typing your password
-            for sudo commands in the terminal. This works by configuring the PAM (Pluggable
-            Authentication Module) system on macOS.
+        <div class="info-callout">
+          <h3 class="info-callout__title">How it works</h3>
+          <p class="info-callout__text">
+            When enabled, you can use Touch ID instead of typing your password for sudo
+            commands in the terminal. This configures the PAM system on macOS.
           </p>
         </div>
 
-        <div class="actions">
-          <button
+        <div class="status-card__actions">
+          <AppButton
             v-if="!status.enabled && status.available"
-            @click="enable"
-            class="btn-primary"
-            :disabled="loading"
+            variant="primary"
+            :loading="loading"
+            @click="showEnableDialog = true"
           >
             Enable Touch ID
-          </button>
-          <button
+          </AppButton>
+          <AppButton
             v-if="status.enabled"
-            @click="disable"
-            class="btn-danger"
-            :disabled="loading"
+            variant="danger"
+            :loading="loading"
+            @click="showDisableDialog = true"
           >
             Disable Touch ID
-          </button>
-          <button
+          </AppButton>
+          <AppButton
             v-if="!status.available"
-            class="btn-secondary"
+            variant="secondary"
             disabled
           >
-            Touch ID Not Available
-          </button>
-          <button @click="getStatus" class="btn-secondary" :disabled="loading">
-            Refresh Status
-          </button>
+            Not Available
+          </AppButton>
+          <AppButton variant="secondary" :loading="loading" @click="getStatus">Refresh</AppButton>
         </div>
       </div>
     </div>
@@ -153,204 +149,73 @@ async function disable() {
 
 <style scoped>
 .touchid-tab {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
   max-width: 900px;
 }
 
-h1 {
-  font-size: 2rem;
-  margin: 0 0 0.5rem 0;
-}
-
-.subtitle {
-  color: #9ca3af;
-  margin: 0 0 2rem 0;
-}
-
-.loading {
-  text-align: center;
-  padding: 4rem 2rem;
-}
-
-.spinner {
-  width: 50px;
-  height: 50px;
-  border: 4px solid #374151;
-  border-top-color: #8b5cf6;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin: 0 auto 1rem;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.message {
-  padding: 1rem;
-  border-radius: 6px;
-  margin-bottom: 1.5rem;
-  font-weight: 500;
-}
-
-.message.success {
-  background: #065f46;
-  color: #d1fae5;
-  border: 1px solid #10b981;
-}
-
-.message.error {
-  background: #7f1d1d;
-  color: #fecaca;
-  border: 1px solid #991b1b;
+.touchid-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
 }
 
 .status-card {
-  background: #1f2937;
-  border: 2px solid #374151;
-  border-radius: 8px;
-  padding: 2rem;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
 }
 
-.status-header {
+.status-card__header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 2rem;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
 }
 
-.status-header h2 {
+.status-card__title {
   margin: 0;
-  font-size: 1.5rem;
-  color: #f3f4f6;
-}
-
-.status-badge {
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
+  font-size: var(--font-size-body);
   font-weight: 600;
-  font-size: 0.875rem;
+  color: var(--color-text-primary);
 }
 
-.status-badge.enabled {
-  background: #065f46;
-  color: #d1fae5;
-  border: 1px solid #10b981;
-}
-
-.status-badge.disabled {
-  background: #7f1d1d;
-  color: #fecaca;
-  border: 1px solid #991b1b;
-}
-
-.status-details {
+.status-card__rows {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  margin-bottom: 2rem;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
 }
 
-.detail-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.75rem;
-  background: #111827;
-  border-radius: 6px;
+.info-callout {
+  padding: var(--space-3);
+  background: var(--color-bg-app);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--space-4);
 }
 
-.detail-label {
-  color: #9ca3af;
-  font-weight: 500;
-}
-
-.detail-value {
-  color: #f3f4f6;
-  font-family: monospace;
-  font-size: 0.875rem;
-}
-
-.info-box {
-  background: #111827;
-  border: 1px solid #374151;
-  border-radius: 6px;
-  padding: 1.5rem;
-  margin-bottom: 2rem;
-}
-
-.info-box h3 {
-  margin: 0 0 0.75rem 0;
-  font-size: 1rem;
-  color: #8b5cf6;
-}
-
-.info-box p {
-  margin: 0;
-  color: #9ca3af;
-  line-height: 1.6;
-  font-size: 0.875rem;
-}
-
-.actions {
-  display: flex;
-  gap: 1rem;
-}
-
-.btn-primary,
-.btn-secondary,
-.btn-danger {
-  padding: 0.75rem 1.5rem;
-  border: none;
-  border-radius: 6px;
-  font-size: 1rem;
+.info-callout__title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-body);
   font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
+  color: var(--color-text-primary);
 }
 
-.btn-primary {
-  background: linear-gradient(135deg, #8b5cf6, #ec4899);
-  color: white;
-  flex: 1;
+.info-callout__text {
+  margin: 0;
+  font-size: var(--font-size-caption);
+  color: var(--color-text-secondary);
+  line-height: 1.5;
 }
 
-.btn-primary:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
-}
-
-.btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-danger {
-  background: linear-gradient(135deg, #dc2626, #991b1b);
-  color: white;
-  flex: 1;
-}
-
-.btn-danger:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.4);
-}
-
-.btn-danger:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-secondary {
-  background: #374151;
-  color: #d1d5db;
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background: #4b5563;
-}
-
-.btn-secondary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.status-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }
 </style>

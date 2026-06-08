@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { EventsOn, EventsOff } from '../../../wailsjs/runtime/runtime'
 import {
   StatusGetMetrics,
@@ -7,13 +7,37 @@ import {
   StatusStopMonitoring
 } from '../../../wailsjs/go/main/App'
 import { handleError } from '../../utils/errorHandler'
+import PageHeader from '../shared/PageHeader.vue'
+import AppButton from '../shared/AppButton.vue'
+import LoadingPanel from '../shared/LoadingPanel.vue'
+import EmptyState from '../shared/EmptyState.vue'
+import StatusHealthSummary from '../status/StatusHealthSummary.vue'
+import ResourceSection from '../status/ResourceSection.vue'
 
-// State
 const metrics = ref(null)
 const monitoring = ref(false)
 const loading = ref(false)
+const refreshing = ref(false)
 
-// Format helpers
+const healthScore = computed(() => calculateHealthScore())
+
+const healthStatus = computed(() => {
+  const score = healthScore.value
+  if (score >= 90) return 'excellent'
+  if (score >= 75) return 'good'
+  if (score >= 60) return 'fair'
+  if (score >= 40) return 'poor'
+  return 'critical'
+})
+
+const gpuUsage = computed(() => {
+  const usage = metrics.value?.gpu?.usage
+  if (usage === null || usage === undefined) return null
+  const num = Number(usage)
+  if (isNaN(num) || num < 0) return null
+  return num
+})
+
 function formatBytes(bytes) {
   if (bytes === 0) return '0 B'
   const k = 1024
@@ -30,7 +54,6 @@ function formatPercent(value) {
 }
 
 function formatRate(mbPerSec) {
-  // Backend already sends MB/s
   if (!mbPerSec || mbPerSec === 0) return '0 MB/s'
   const num = Number(mbPerSec)
   if (isNaN(num)) return '0 MB/s'
@@ -45,58 +68,49 @@ function formatTemp(celsius) {
   return num.toFixed(1) + '°C'
 }
 
-// Get color based on percentage
-function getHealthColor(percent, invert = false) {
-  if (invert) {
-    // For things like disk space where high is bad
-    if (percent >= 90) return '#ef4444' // red
-    if (percent >= 75) return '#f59e0b' // yellow
-    return '#10b981' // green
-  } else {
-    // For things like battery where high is good
-    if (percent >= 80) return '#10b981' // green
-    if (percent >= 50) return '#f59e0b' // yellow
-    return '#ef4444' // red
-  }
+function getUsageColor(percent) {
+  if (percent >= 90) return 'var(--color-danger)'
+  if (percent >= 75) return 'var(--color-warning)'
+  return 'var(--color-success)'
 }
 
-// Calculate overall health score (0-100)
+function getBatteryColor(percent) {
+  if (percent < 20) return 'var(--color-danger)'
+  if (percent < 40) return 'var(--color-warning)'
+  return 'var(--color-success)'
+}
+
 function calculateHealthScore() {
   if (!metrics.value) return 0
 
   let score = 100
   const m = metrics.value
 
-  // CPU usage (max -30 points)
-  if (m.cpu && m.cpu.totalPercent) {
+  if (m.cpu?.totalPercent) {
     if (m.cpu.totalPercent > 90) score -= 30
     else if (m.cpu.totalPercent > 70) score -= 20
     else if (m.cpu.totalPercent > 50) score -= 10
   }
 
-  // Memory usage (max -25 points)
-  if (m.memory && m.memory.percent) {
+  if (m.memory?.percent) {
     if (m.memory.percent > 90) score -= 25
     else if (m.memory.percent > 75) score -= 15
     else if (m.memory.percent > 60) score -= 5
   }
 
-  // Disk usage (max -20 points)
-  if (m.disk && m.disk.percent) {
+  if (m.disk?.percent) {
     if (m.disk.percent > 95) score -= 20
     else if (m.disk.percent > 85) score -= 10
     else if (m.disk.percent > 75) score -= 5
   }
 
-  // CPU temperature (max -15 points)
-  if (m.cpu && m.cpu.temperature) {
+  if (m.cpu?.temperature) {
     if (m.cpu.temperature > 85) score -= 15
     else if (m.cpu.temperature > 75) score -= 10
     else if (m.cpu.temperature > 65) score -= 5
   }
 
-  // Battery (max -10 points, only if present)
-  if (m.battery && m.battery.level !== undefined) {
+  if (m.battery?.level !== undefined) {
     if (m.battery.level < 20) score -= 10
     else if (m.battery.level < 40) score -= 5
   }
@@ -104,27 +118,14 @@ function calculateHealthScore() {
   return Math.max(0, Math.min(100, score))
 }
 
-function getHealthScoreLabel(score) {
-  if (score >= 90) return 'Excellent'
-  if (score >= 75) return 'Good'
-  if (score >= 60) return 'Fair'
-  if (score >= 40) return 'Poor'
-  return 'Critical'
-}
-
-// Start monitoring
 async function startMonitoring() {
   loading.value = true
   try {
-    await StatusStartMonitoring(2) // 2 second interval
+    await StatusStartMonitoring(2)
     monitoring.value = true
-
-    // Get initial metrics - try/catch to ensure loading state clears even on error
     try {
       await fetchMetrics()
-    } catch (fetchError) {
-      // Error already handled in fetchMetrics, continue anyway
-      // Monitoring is running, so updates will come via events
+    } catch {
       console.warn('Failed to fetch initial metrics, will retry via monitoring events')
     }
   } catch (error) {
@@ -135,7 +136,6 @@ async function startMonitoring() {
   }
 }
 
-// Stop monitoring
 async function stopMonitoring() {
   loading.value = true
   try {
@@ -148,42 +148,35 @@ async function stopMonitoring() {
   }
 }
 
-// Fetch current metrics with timeout
 async function fetchMetrics() {
+  const timeoutPromise = new Promise((_, reject) => {
+    setTimeout(() => reject(new Error('Metrics fetch timeout (10s)')), 10000)
+  })
+
+  const data = await Promise.race([StatusGetMetrics(), timeoutPromise])
+  if (!data) throw new Error('No metrics data received')
+  metrics.value = data
+}
+
+async function refreshMetrics() {
+  if (refreshing.value) return
+  refreshing.value = true
   try {
-    // Add a timeout to prevent infinite loading
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Metrics fetch timeout (10s)')), 10000)
-    })
-
-    const data = await Promise.race([StatusGetMetrics(), timeoutPromise])
-
-    // Ensure data is valid before setting
-    if (data) {
-      metrics.value = data
-    } else {
-      throw new Error('No metrics data received')
-    }
+    await fetchMetrics()
   } catch (error) {
-    console.error('Failed to fetch metrics:', error)
     handleError(error, 'Fetch Metrics')
-    // Don't leave loading state hanging - let it complete
-    throw error
+  } finally {
+    refreshing.value = false
   }
 }
 
-// Setup
 onMounted(() => {
-  // Listen for metric updates
   EventsOn('status:update', (data) => {
     metrics.value = data
   })
-
-  // Auto-start monitoring
   startMonitoring()
 })
 
-// Cleanup
 onUnmounted(() => {
   EventsOff('status:update')
   if (monitoring.value) {
@@ -194,544 +187,299 @@ onUnmounted(() => {
 
 <template>
   <div class="status-tab">
-    <h1>System Status</h1>
-    <p class="subtitle">Real-time system health monitoring</p>
-
-    <!-- Control Buttons -->
-    <div class="controls">
-      <button
-        v-if="!monitoring"
-        @click="startMonitoring"
-        class="btn-primary"
-        :disabled="loading"
-      >
-        Start Monitoring
-      </button>
-      <button
-        v-else
-        @click="stopMonitoring"
-        class="btn-stop"
-        :disabled="loading"
-      >
-        Stop Monitoring
-      </button>
-      <button
-        v-if="monitoring"
-        @click="fetchMetrics"
-        class="btn-secondary"
-        :disabled="loading"
-      >
-        Refresh
-      </button>
-    </div>
-
-    <!-- Loading State -->
-    <div v-if="loading && !metrics" class="loading">
-      <div class="spinner"></div>
-      <p>Loading metrics...</p>
-    </div>
-
-    <!-- Waiting for metrics (monitoring active but no data yet) -->
-    <div v-else-if="monitoring && !metrics" class="loading">
-      <div class="spinner"></div>
-      <p>Waiting for metrics data...</p>
-      <p class="subtitle" style="margin-top: 0.5rem;">Monitoring is active, collecting system data...</p>
-    </div>
-
-    <!-- Metrics Display -->
-    <div v-else-if="metrics" class="metrics">
-      <!-- Health Score Card -->
-      <div class="health-score-card">
-        <h2>System Health</h2>
-        <div class="health-score-circle">
-          <div class="score-value">{{ calculateHealthScore() }}</div>
-          <div class="score-label">{{ getHealthScoreLabel(calculateHealthScore()) }}</div>
-        </div>
-      </div>
-
-      <!-- Metrics Grid -->
-      <div class="metrics-grid">
-        <!-- CPU Card -->
-        <div class="metric-card" v-if="metrics.cpu">
-          <div class="card-header">
-            <span class="card-icon">🖥️</span>
-            <h3>CPU</h3>
-          </div>
-          <div class="metric-value">
-            {{ formatPercent(metrics.cpu.totalPercent || 0) }}
-          </div>
-          <div class="progress-bar">
-            <div
-              class="progress-fill"
-              :style="{
-                width: (metrics.cpu.totalPercent || 0) + '%',
-                backgroundColor: getHealthColor(metrics.cpu.totalPercent || 0, true)
-              }"
-            ></div>
-          </div>
-          <div class="metric-details">
-            <div v-if="metrics.cpu.temperature">
-              <span class="detail-label">Temperature:</span>
-              <span class="detail-value">{{ formatTemp(metrics.cpu.temperature) }}</span>
-            </div>
-            <div v-if="metrics.cpu.cores">
-              <span class="detail-label">Cores:</span>
-              <span class="detail-value">{{ metrics.cpu.cores }}</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Memory Card -->
-        <div class="metric-card" v-if="metrics.memory">
-          <div class="card-header">
-            <span class="card-icon">💾</span>
-            <h3>Memory</h3>
-          </div>
-          <div class="metric-value">
-            {{ formatPercent(metrics.memory.percent || 0) }}
-          </div>
-          <div class="progress-bar">
-            <div
-              class="progress-fill"
-              :style="{
-                width: (metrics.memory.percent || 0) + '%',
-                backgroundColor: getHealthColor(metrics.memory.percent || 0, true)
-              }"
-            ></div>
-          </div>
-          <div class="metric-details">
-            <div>
-              <span class="detail-label">Used:</span>
-              <span class="detail-value">{{ formatBytes(metrics.memory.used || 0) }}</span>
-            </div>
-            <div>
-              <span class="detail-label">Total:</span>
-              <span class="detail-value">{{ formatBytes(metrics.memory.total || 0) }}</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Disk Card -->
-        <div class="metric-card" v-if="metrics.disk">
-          <div class="card-header">
-            <span class="card-icon">💿</span>
-            <h3>Disk</h3>
-          </div>
-          <div class="metric-value">
-            {{ formatPercent(metrics.disk.percent || 0) }}
-          </div>
-          <div class="progress-bar">
-            <div
-              class="progress-fill"
-              :style="{
-                width: (metrics.disk.percent || 0) + '%',
-                backgroundColor: getHealthColor(metrics.disk.percent || 0, true)
-              }"
-            ></div>
-          </div>
-          <div class="metric-details">
-            <div>
-              <span class="detail-label">Free:</span>
-              <span class="detail-value">{{ formatBytes(metrics.disk.free || 0) }}</span>
-            </div>
-            <div>
-              <span class="detail-label">Total:</span>
-              <span class="detail-value">{{ formatBytes(metrics.disk.total || 0) }}</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Network Card -->
-        <div class="metric-card" v-if="metrics.network">
-          <div class="card-header">
-            <span class="card-icon">🌐</span>
-            <h3>Network</h3>
-          </div>
-          <div class="metric-stats">
-            <div class="stat-item">
-              <span class="stat-icon">⬇️</span>
-              <div class="stat-info">
-                <div class="stat-label">Download</div>
-                <div class="stat-value">{{ formatRate(metrics.network.download || 0) }}</div>
-              </div>
-            </div>
-            <div class="stat-item">
-              <span class="stat-icon">⬆️</span>
-              <div class="stat-info">
-                <div class="stat-label">Upload</div>
-                <div class="stat-value">{{ formatRate(metrics.network.upload || 0) }}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Battery Card -->
-        <div class="metric-card" v-if="metrics.battery && metrics.battery.level !== undefined">
-          <div class="card-header">
-            <span class="card-icon">🔋</span>
-            <h3>Battery</h3>
-          </div>
-          <div class="metric-value">
-            {{ formatPercent(metrics.battery.level || 0) }}
-          </div>
-          <div class="progress-bar">
-            <div
-              class="progress-fill"
-              :style="{
-                width: (metrics.battery.level || 0) + '%',
-                backgroundColor: getHealthColor(metrics.battery.level || 0, false)
-              }"
-            ></div>
-          </div>
-          <div class="metric-details">
-            <div v-if="metrics.battery.status">
-              <span class="detail-label">Status:</span>
-              <span class="detail-value">{{ metrics.battery.status }}</span>
-            </div>
-            <div v-if="metrics.battery.health !== undefined && metrics.battery.health !== ''">
-              <span class="detail-label">Health:</span>
-              <span class="detail-value">{{ metrics.battery.health }}</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- GPU Card -->
-        <div class="metric-card" v-if="metrics.gpu && metrics.gpu.usage !== undefined">
-          <div class="card-header">
-            <span class="card-icon">🎮</span>
-            <h3>GPU</h3>
-          </div>
-          <div class="metric-value">
-            {{ formatPercent(metrics.gpu.usage || 0) }}
-          </div>
-          <div class="progress-bar">
-            <div
-              class="progress-fill"
-              :style="{
-                width: (metrics.gpu.usage || 0) + '%',
-                backgroundColor: getHealthColor(metrics.gpu.usage || 0, true)
-              }"
-            ></div>
-          </div>
-          <div class="metric-details">
-            <div v-if="metrics.gpu.temperature">
-              <span class="detail-label">Temperature:</span>
-              <span class="detail-value">{{ formatTemp(metrics.gpu.temperature) }}</span>
-            </div>
-            <div v-if="metrics.gpu.memory">
-              <span class="detail-label">Memory:</span>
-              <span class="detail-value">{{ formatBytes(metrics.gpu.memory) }}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Monitoring Indicator -->
-      <div v-if="monitoring" class="monitoring-indicator">
-        <div class="pulse-dot"></div>
-        <span>Live monitoring active (2s interval)</span>
+    <div class="status-toolbar">
+      <PageHeader
+        title="System Status"
+        subtitle="Real-time system health monitoring"
+      />
+      <div class="status-toolbar__actions">
+        <AppButton
+          v-if="!monitoring"
+          variant="primary"
+          :loading="loading"
+          @click="startMonitoring"
+        >
+          Start Monitoring
+        </AppButton>
+        <template v-else>
+          <AppButton
+            variant="danger"
+            :loading="loading"
+            @click="stopMonitoring"
+          >
+            Stop Monitoring
+          </AppButton>
+          <button
+            type="button"
+            class="status-toolbar__refresh"
+            :disabled="refreshing"
+            aria-label="Refresh metrics"
+            @click="refreshMetrics"
+          >
+            <i
+              class="pi pi-refresh status-toolbar__refresh-icon"
+              :class="{ 'status-toolbar__refresh-icon--spin': refreshing }"
+              aria-hidden="true"
+            />
+          </button>
+        </template>
       </div>
     </div>
 
-    <!-- Initial State -->
-    <div v-else class="initial-state">
-      <p>Click "Start Monitoring" to view real-time system metrics</p>
+    <LoadingPanel v-if="loading && !metrics" message="Loading metrics" />
+
+    <LoadingPanel v-else-if="monitoring && !metrics" message="Collecting metrics" />
+
+    <div v-else-if="metrics" class="status-content">
+      <StatusHealthSummary :score="healthScore" :status="healthStatus" />
+
+      <div class="status-group">
+        <ResourceSection
+          v-if="metrics.cpu"
+          icon="pi-desktop"
+          title="CPU"
+          :value="formatPercent(metrics.cpu.totalPercent || 0)"
+          :progress="metrics.cpu.totalPercent || 0"
+          :progress-color="getUsageColor(metrics.cpu.totalPercent || 0)"
+        >
+          <template #details>
+            <div v-if="metrics.cpu.temperature" class="detail-row">
+              <span class="detail-row__label">Temperature</span>
+              <span class="detail-row__value">{{ formatTemp(metrics.cpu.temperature) }}</span>
+            </div>
+            <div v-if="metrics.cpu.cores" class="detail-row">
+              <span class="detail-row__label">Cores</span>
+              <span class="detail-row__value">{{ metrics.cpu.cores }}</span>
+            </div>
+          </template>
+        </ResourceSection>
+
+        <ResourceSection
+          v-if="metrics.memory"
+          icon="pi-database"
+          title="Memory"
+          :value="formatPercent(metrics.memory.percent || 0)"
+          :progress="metrics.memory.percent || 0"
+          :progress-color="getUsageColor(metrics.memory.percent || 0)"
+        >
+          <template #details>
+            <div class="detail-row">
+              <span class="detail-row__label">Used</span>
+              <span class="detail-row__value">{{ formatBytes(metrics.memory.used || 0) }}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-row__label">Total</span>
+              <span class="detail-row__value">{{ formatBytes(metrics.memory.total || 0) }}</span>
+            </div>
+          </template>
+        </ResourceSection>
+
+        <ResourceSection
+          v-if="metrics.disk"
+          icon="pi-server"
+          title="Disk"
+          :value="formatPercent(metrics.disk.percent || 0)"
+          :progress="metrics.disk.percent || 0"
+          :progress-color="getUsageColor(metrics.disk.percent || 0)"
+        >
+          <template #details>
+            <div class="detail-row">
+              <span class="detail-row__label">Free</span>
+              <span class="detail-row__value">{{ formatBytes(metrics.disk.free || 0) }}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-row__label">Total</span>
+              <span class="detail-row__value">{{ formatBytes(metrics.disk.total || 0) }}</span>
+            </div>
+          </template>
+        </ResourceSection>
+
+        <ResourceSection
+          v-if="metrics.network"
+          icon="pi-globe"
+          title="Network"
+        >
+          <template #details>
+            <div class="detail-row">
+              <span class="detail-row__label">
+                <i class="pi pi-arrow-down detail-row__icon" aria-hidden="true" />
+                Download
+              </span>
+              <span class="detail-row__value">{{ formatRate(metrics.network.download || 0) }}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-row__label">
+                <i class="pi pi-arrow-up detail-row__icon" aria-hidden="true" />
+                Upload
+              </span>
+              <span class="detail-row__value">{{ formatRate(metrics.network.upload || 0) }}</span>
+            </div>
+          </template>
+        </ResourceSection>
+
+        <ResourceSection
+          v-if="metrics.battery && metrics.battery.level !== undefined"
+          icon="pi-mobile"
+          title="Battery"
+          :value="formatPercent(metrics.battery.level || 0)"
+          :progress="metrics.battery.level || 0"
+          :progress-color="getBatteryColor(metrics.battery.level || 0)"
+        >
+          <template #details>
+            <div v-if="metrics.battery.status" class="detail-row">
+              <span class="detail-row__label">Status</span>
+              <span class="detail-row__value">{{ metrics.battery.status }}</span>
+            </div>
+            <div v-if="metrics.battery.health" class="detail-row">
+              <span class="detail-row__label">Health</span>
+              <span class="detail-row__value">{{ metrics.battery.health }}</span>
+            </div>
+          </template>
+        </ResourceSection>
+
+        <ResourceSection
+          v-if="metrics.gpu"
+          icon="pi-microchip"
+          title="GPU"
+          :value="gpuUsage !== null ? formatPercent(gpuUsage) : ''"
+          :progress="gpuUsage"
+          :progress-color="gpuUsage !== null ? getUsageColor(gpuUsage) : undefined"
+          :unavailable="gpuUsage === null"
+        >
+          <template #details>
+            <div v-if="metrics.gpu.temperature" class="detail-row">
+              <span class="detail-row__label">Temperature</span>
+              <span class="detail-row__value">{{ formatTemp(metrics.gpu.temperature) }}</span>
+            </div>
+            <div v-if="metrics.gpu.memory" class="detail-row">
+              <span class="detail-row__label">Memory</span>
+              <span class="detail-row__value">{{ formatBytes(metrics.gpu.memory) }}</span>
+            </div>
+          </template>
+        </ResourceSection>
+      </div>
     </div>
+
+    <EmptyState
+      v-else
+      message="Click Start Monitoring to view real-time system metrics"
+    />
   </div>
 </template>
 
 <style scoped>
 .status-tab {
-  max-width: 1200px;
-}
-
-h1 {
-  font-size: 2rem;
-  margin: 0 0 0.5rem 0;
-}
-
-.subtitle {
-  color: #9ca3af;
-  margin: 0 0 2rem 0;
-}
-
-/* Controls */
-.controls {
   display: flex;
-  gap: 1rem;
-  margin-bottom: 2rem;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
 }
 
-.btn-primary,
-.btn-stop,
-.btn-secondary {
-  padding: 0.75rem 1.5rem;
-  border: none;
-  border-radius: 6px;
-  font-size: 1rem;
-  font-weight: 600;
+.status-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-bottom: var(--space-3);
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.status-toolbar :deep(.page-header) {
+  margin-bottom: 0;
+  flex: 1;
+}
+
+.status-toolbar__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+  padding-top: var(--space-1);
+}
+
+.status-toolbar__refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
   cursor: pointer;
-  transition: all 0.2s;
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast);
 }
 
-.btn-primary {
-  background: linear-gradient(135deg, #8b5cf6, #ec4899);
-  color: white;
+.status-toolbar__refresh:not(:disabled):hover {
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  border-color: var(--color-text-tertiary);
 }
 
-.btn-primary:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
+.status-toolbar__refresh:not(:disabled):active {
+  opacity: 0.85;
 }
 
-.btn-stop {
-  background: linear-gradient(135deg, #ef4444, #dc2626);
-  color: white;
-}
-
-.btn-stop:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
-}
-
-.btn-secondary {
-  background: #374151;
-  color: #d1d5db;
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background: #4b5563;
-}
-
-.btn-primary:disabled,
-.btn-stop:disabled,
-.btn-secondary:disabled {
+.status-toolbar__refresh:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-/* Loading */
-.loading {
-  text-align: center;
-  padding: 4rem 2rem;
-}
-
-.spinner {
-  width: 50px;
-  height: 50px;
-  border: 4px solid #374151;
-  border-top-color: #8b5cf6;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin: 0 auto 1rem;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-/* Health Score */
-.health-score-card {
-  background: linear-gradient(135deg, #1f2937 0%, #374151 100%);
-  border: 2px solid #374151;
-  border-radius: 12px;
-  padding: 2rem;
-  margin-bottom: 2rem;
-  text-align: center;
-}
-
-.health-score-card h2 {
-  margin: 0 0 1.5rem 0;
-  font-size: 1.5rem;
-  color: #f3f4f6;
-}
-
-.health-score-circle {
-  display: inline-block;
-}
-
-.score-value {
-  font-size: 4rem;
-  font-weight: 700;
-  background: linear-gradient(135deg, #8b5cf6, #ec4899);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+.status-toolbar__refresh-icon {
+  font-size: 13px;
   line-height: 1;
 }
 
-.score-label {
-  margin-top: 0.5rem;
-  font-size: 1.25rem;
-  color: #9ca3af;
-  font-weight: 600;
+.status-toolbar__refresh-icon--spin {
+  animation: refresh-spin 0.7s linear infinite;
 }
 
-/* Metrics Grid */
-.metrics-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 1.5rem;
-  margin-bottom: 2rem;
+@keyframes refresh-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
-.metric-card {
-  background: linear-gradient(135deg, #1f2937 0%, #374151 100%);
-  border: 2px solid #374151;
-  border-radius: 8px;
-  padding: 1.5rem;
-  transition: all 0.2s;
+@media (prefers-reduced-motion: reduce) {
+  .status-toolbar__refresh-icon--spin {
+    animation: none;
+  }
 }
 
-.metric-card:hover {
-  border-color: #8b5cf6;
-  transform: translateY(-2px);
-}
-
-.card-header {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-}
-
-.card-icon {
-  font-size: 1.5rem;
-}
-
-.card-header h3 {
-  margin: 0;
-  font-size: 1.125rem;
-  color: #f3f4f6;
-}
-
-.metric-value {
-  font-size: 2.5rem;
-  font-weight: 700;
-  background: linear-gradient(135deg, #8b5cf6, #ec4899);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  margin-bottom: 1rem;
-}
-
-/* Progress Bar */
-.progress-bar {
-  width: 100%;
-  height: 8px;
-  background: #1f2937;
-  border-radius: 4px;
-  overflow: hidden;
-  margin-bottom: 1rem;
-}
-
-.progress-fill {
-  height: 100%;
-  transition: width 0.3s, background-color 0.3s;
-}
-
-/* Metric Details */
-.metric-details {
+.status-content {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-}
-
-.metric-details > div {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.875rem;
-}
-
-.detail-label {
-  color: #9ca3af;
-}
-
-.detail-value {
-  color: #d1d5db;
-  font-weight: 600;
-}
-
-/* Metric Stats (for Network card) */
-.metric-stats {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.stat-item {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 1rem;
-  background: #1f2937;
-  border-radius: 6px;
-}
-
-.stat-icon {
-  font-size: 1.5rem;
-}
-
-.stat-info {
+  gap: var(--space-3);
   flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
-.stat-label {
-  color: #9ca3af;
-  font-size: 0.875rem;
-  margin-bottom: 0.25rem;
+.status-group {
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
 }
 
-.stat-value {
-  color: #f3f4f6;
-  font-size: 1.125rem;
-  font-weight: 600;
+.status-group > :deep(* + *) {
+  border-top: 1px solid var(--color-border);
 }
 
-/* Monitoring Indicator */
-.monitoring-indicator {
+.status-group :deep(.detail-row__label) {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-  padding: 1rem;
-  background: #1f2937;
-  border-radius: 6px;
-  color: #10b981;
-  font-size: 0.875rem;
-  font-weight: 600;
+  gap: var(--space-2);
 }
 
-.pulse-dot {
-  width: 10px;
-  height: 10px;
-  background: #10b981;
-  border-radius: 50%;
-  animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.5;
-    transform: scale(1.2);
-  }
-}
-
-/* Initial State */
-.initial-state {
-  text-align: center;
-  padding: 4rem 2rem;
-  background: #1f2937;
-  border-radius: 8px;
-  border: 2px dashed #374151;
-}
-
-.initial-state p {
-  color: #9ca3af;
-  font-size: 1.125rem;
+.status-group :deep(.detail-row__icon) {
+  font-size: 10px;
+  color: var(--color-text-secondary);
 }
 </style>

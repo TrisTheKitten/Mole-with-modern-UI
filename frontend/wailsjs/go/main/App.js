@@ -14,6 +14,10 @@ export function AnalyzeOpenInFinder(arg1) {
   return window['go']['main']['App']['AnalyzeOpenInFinder'](arg1);
 }
 
+export function AnalyzePickDirectory(arg1) {
+  return window['go']['main']['App']['AnalyzePickDirectory'](arg1);
+}
+
 export function AnalyzeScanDirectory(arg1) {
   return window['go']['main']['App']['AnalyzeScanDirectory'](arg1);
 }

@@ -1,407 +1,305 @@
 <script setup>
-import { ref } from 'vue'
+import PageHeader from '../shared/PageHeader.vue'
+import InfoRow from '../shared/InfoRow.vue'
+import githubIcon from '../../assets/icons/github.svg'
 
-// App information
 const appInfo = {
   name: 'MoleUI - Deep Clean & Optimize',
   version: '1.0.0',
   description: 'Visual interface for the Mole CLI - Advanced macOS system maintenance and optimization tool',
 }
 
-// Features
 const features = [
-  {
-    icon: '🧹',
-    title: 'System Cleanup',
-    description: 'Remove cache, logs, and temporary files'
-  },
-  {
-    icon: '🗑️',
-    title: 'Application Management',
-    description: 'Uninstall and optimize applications'
-  },
-  {
-    icon: '📊',
-    title: 'Disk Space Analysis',
-    description: 'Visualize and analyze disk usage'
-  },
-  {
-    icon: '📈',
-    title: 'System Monitoring',
-    description: 'Real-time CPU, Memory, Disk, and Network metrics'
-  },
-  {
-    icon: '🔐',
-    title: 'Touch ID Management',
-    description: 'Manage Touch ID authentication settings'
-  }
+  { icon: 'pi-eraser', title: 'System Cleanup', description: 'Remove cache, logs, and temporary files' },
+  { icon: 'pi-trash', title: 'Application Management', description: 'Uninstall and optimize applications' },
+  { icon: 'pi-chart-bar', title: 'Disk Space Analysis', description: 'Visualize and analyze disk usage' },
+  { icon: 'pi-chart-line', title: 'System Monitoring', description: 'Real-time CPU, Memory, Disk, and Network metrics' },
+  { icon: 'pi-lock', title: 'Touch ID Management', description: 'Manage Touch ID authentication settings' },
 ]
 
-// Technology stack
 const techStack = [
   { label: 'Frontend', value: 'Vue 3 + Vite' },
   { label: 'Backend', value: 'Go + Wails v2' },
-  { label: 'Platform', value: 'macOS (Apple Silicon & Intel)' }
+  { label: 'Platform', value: 'macOS (Apple Silicon & Intel)' },
 ]
 
-// Credits
+const uiDeveloper = {
+  name: 'Tris The Kitten',
+  url: 'https://github.com/TrisTheKitten',
+}
+
 const credits = [
-  { label: 'UI Developer', value: 'Claude Code' },
   { label: 'Framework', value: 'Wails' },
-  { label: 'License', value: 'MIT' }
+  { label: 'License', value: 'MIT' },
 ]
 
-// Core project attribution
 const coreAttribution = {
   title: 'Based on Mole CLI',
   description: 'This application uses the Mole project as its core engine, providing a visual interface to the powerful command-line tool.',
   repoUrl: 'https://github.com/tw93/Mole',
-  author: 'tw93'
+  author: 'tw93',
 }
 </script>
 
 <template>
   <div class="about-tab">
-    <h1>About MoleUI</h1>
-    <p class="subtitle">Visual interface for macOS system maintenance and optimization</p>
+    <PageHeader
+      title="About MoleUI"
+      subtitle="Visual interface for macOS system maintenance and optimization"
+    />
 
-    <!-- App Info Card -->
     <div class="info-card">
-      <div class="app-header">
-        <div class="app-icon">🦡</div>
-        <div class="app-details">
-          <h2>{{ appInfo.name }}</h2>
-          <div class="version">Version {{ appInfo.version }}</div>
+      <div class="info-card__header">
+        <div class="info-card__icon" aria-hidden="true">
+          <i class="pi pi-cog" />
+        </div>
+        <div>
+          <h2 class="info-card__name">{{ appInfo.name }}</h2>
+          <span class="info-card__version">Version {{ appInfo.version }}</span>
         </div>
       </div>
-      <p class="app-description">{{ appInfo.description }}</p>
+      <p class="info-card__description">{{ appInfo.description }}</p>
     </div>
 
-    <!-- Features Section -->
-    <div class="section">
-      <h3 class="section-title">Features</h3>
+    <section class="about-section">
+      <h3 class="about-section__title">Features</h3>
       <div class="features-grid">
         <div v-for="feature in features" :key="feature.title" class="feature-card">
-          <div class="feature-icon">{{ feature.icon }}</div>
-          <h4>{{ feature.title }}</h4>
-          <p>{{ feature.description }}</p>
+          <i :class="['pi', feature.icon, 'feature-card__icon']" aria-hidden="true" />
+          <h4 class="feature-card__title">{{ feature.title }}</h4>
+          <p class="feature-card__description">{{ feature.description }}</p>
         </div>
       </div>
-    </div>
+    </section>
 
-    <!-- Technology Stack Section -->
-    <div class="section">
-      <h3 class="section-title">Technology Stack</h3>
-      <div class="tech-list">
-        <div v-for="tech in techStack" :key="tech.label" class="tech-item">
-          <span class="tech-label">{{ tech.label }}:</span>
-          <span class="tech-value">{{ tech.value }}</span>
-        </div>
+    <section class="about-section">
+      <h3 class="about-section__title">Technology Stack</h3>
+      <div class="about-section__card">
+        <InfoRow
+          v-for="tech in techStack"
+          :key="tech.label"
+          :label="tech.label"
+          :value="tech.value"
+        />
       </div>
-    </div>
+    </section>
 
-    <!-- Credits Section -->
-    <div class="section">
-      <h3 class="section-title">Credits</h3>
-      <div class="credits-list">
-        <div v-for="credit in credits" :key="credit.label" class="credit-item">
-          <span class="credit-label">{{ credit.label }}:</span>
-          <span class="credit-value">{{ credit.value }}</span>
-        </div>
+    <section class="about-section">
+      <h3 class="about-section__title">Credits</h3>
+      <div class="about-section__card">
+        <InfoRow label="UI Developer">
+          <a
+            :href="uiDeveloper.url"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="credit-link"
+          >
+            <img
+              :src="githubIcon"
+              alt=""
+              class="credit-link__icon"
+              width="16"
+              height="16"
+              aria-hidden="true"
+            />
+            {{ uiDeveloper.name }}
+          </a>
+        </InfoRow>
+        <InfoRow
+          v-for="credit in credits"
+          :key="credit.label"
+          :label="credit.label"
+          :value="credit.value"
+        />
       </div>
-    </div>
+    </section>
 
-    <!-- Core Attribution Section -->
-    <div class="section">
-      <h3 class="section-title">{{ coreAttribution.title }}</h3>
-      <div class="attribution-card">
-        <p class="attribution-description">{{ coreAttribution.description }}</p>
-        <div class="attribution-details">
-          <div class="attribution-item">
-            <span class="attribution-label">Original Project:</span>
-            <a :href="coreAttribution.repoUrl" target="_blank" rel="noopener noreferrer" class="attribution-link">
-              {{ coreAttribution.repoUrl }}
-            </a>
-          </div>
-          <div class="attribution-item">
-            <span class="attribution-label">Author:</span>
-            <span class="attribution-value">{{ coreAttribution.author }}</span>
-          </div>
-        </div>
+    <section class="about-section">
+      <h3 class="about-section__title">{{ coreAttribution.title }}</h3>
+      <div class="about-section__card">
+        <p class="attribution__description">{{ coreAttribution.description }}</p>
+        <InfoRow label="Original Project">
+          <a
+            :href="coreAttribution.repoUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="attribution__link"
+          >{{ coreAttribution.repoUrl }}</a>
+        </InfoRow>
+        <InfoRow label="Author" :value="coreAttribution.author" />
       </div>
-    </div>
+    </section>
 
-    <!-- Footer -->
-    <div class="footer">
+    <footer class="about-footer">
       <p>Built with care for macOS users</p>
-      <p class="copyright">&copy; 2025 MoleUI. All rights reserved.</p>
-    </div>
+      <p class="about-footer__copyright">&copy; 2025 MoleUI. All rights reserved.</p>
+    </footer>
   </div>
 </template>
 
 <style scoped>
 .about-tab {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
   max-width: 900px;
-  margin: 0 auto;
+  overflow-y: auto;
+  padding-bottom: var(--space-6);
 }
 
-h1 {
-  font-size: 2rem;
-  margin: 0 0 0.5rem 0;
-}
-
-.subtitle {
-  color: #9ca3af;
-  margin: 0 0 2rem 0;
-}
-
-/* App Info Card */
 .info-card {
-  background: linear-gradient(135deg, #1f2937 0%, #374151 100%);
-  border: 2px solid #374151;
-  border-radius: 12px;
-  padding: 2rem;
-  margin-bottom: 2rem;
-  transition: all 0.2s;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
 }
 
-.info-card:hover {
-  border-color: #8b5cf6;
-  transform: translateY(-2px);
-}
-
-.app-header {
+.info-card__header {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
-  margin-bottom: 1rem;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
 }
 
-.app-icon {
-  font-size: 4rem;
-  width: 80px;
-  height: 80px;
+.info-card__icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #8b5cf6, #ec4899);
-  border-radius: 16px;
+  width: 48px;
+  height: 48px;
+  background: var(--color-bg-elevated);
+  border-radius: var(--radius-md);
+  color: var(--color-accent);
+  font-size: 20px;
 }
 
-.app-details h2 {
-  margin: 0 0 0.5rem 0;
-  font-size: 1.75rem;
-  background: linear-gradient(135deg, #8b5cf6, #ec4899);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.version {
-  color: #9ca3af;
-  font-size: 0.875rem;
+.info-card__name {
+  margin: 0 0 var(--space-1);
+  font-size: var(--font-size-title);
   font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.info-card__version {
+  font-size: var(--font-size-caption);
+  font-weight: 500;
+  color: var(--color-text-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
 }
 
-.app-description {
-  color: #d1d5db;
-  font-size: 1.125rem;
-  line-height: 1.6;
+.info-card__description {
   margin: 0;
-}
-
-/* Section */
-.section {
-  margin-bottom: 2rem;
-}
-
-.section-title {
-  font-size: 1.25rem;
-  font-weight: 600;
-  margin: 0 0 1rem 0;
-  color: #f3f4f6;
-  padding-bottom: 0.5rem;
-  border-bottom: 2px solid #374151;
-}
-
-/* Features Grid */
-.features-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 1rem;
-}
-
-.feature-card {
-  background: linear-gradient(135deg, #1f2937 0%, #374151 100%);
-  border: 2px solid #374151;
-  border-radius: 8px;
-  padding: 1.5rem;
-  transition: all 0.2s;
-}
-
-.feature-card:hover {
-  border-color: #8b5cf6;
-  transform: translateY(-2px);
-}
-
-.feature-icon {
-  font-size: 2rem;
-  margin-bottom: 0.75rem;
-}
-
-.feature-card h4 {
-  margin: 0 0 0.5rem 0;
-  font-size: 1rem;
-  color: #f3f4f6;
-}
-
-.feature-card p {
-  margin: 0;
-  color: #9ca3af;
-  font-size: 0.875rem;
+  font-size: var(--font-size-body);
+  color: var(--color-text-secondary);
   line-height: 1.5;
 }
 
-/* Tech List */
-.tech-list {
-  background: linear-gradient(135deg, #1f2937 0%, #374151 100%);
-  border: 2px solid #374151;
-  border-radius: 8px;
-  padding: 1.5rem;
+.about-section {
+  margin-bottom: var(--space-4);
+}
+
+.about-section__title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-body);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.about-section__card {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
 }
 
-.tech-item {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-2);
 }
 
-.tech-label {
-  color: #9ca3af;
-  font-size: 0.875rem;
+.feature-card {
+  padding: var(--space-3);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.feature-card__icon {
+  font-size: 16px;
+  color: var(--color-accent);
+  margin-bottom: var(--space-2);
+  display: block;
+}
+
+.feature-card__title {
+  margin: 0 0 var(--space-1);
+  font-size: var(--font-size-body);
   font-weight: 600;
-  min-width: 100px;
+  color: var(--color-text-primary);
 }
 
-.tech-value {
-  color: #f3f4f6;
-  font-size: 1rem;
-  font-weight: 600;
-  background: linear-gradient(135deg, #8b5cf6, #ec4899);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+.feature-card__description {
+  margin: 0;
+  font-size: var(--font-size-caption);
+  color: var(--color-text-secondary);
+  line-height: 1.4;
 }
 
-/* Credits List */
-.credits-list {
-  background: linear-gradient(135deg, #1f2937 0%, #374151 100%);
-  border: 2px solid #374151;
-  border-radius: 8px;
-  padding: 1.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
+.attribution__description {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-body);
+  color: var(--color-text-secondary);
+  line-height: 1.5;
 }
 
-.credit-item {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.credit-label {
-  color: #9ca3af;
-  font-size: 0.875rem;
-  font-weight: 600;
-  min-width: 120px;
-}
-
-.credit-value {
-  color: #d1d5db;
-  font-size: 1rem;
-  font-weight: 600;
-}
-
-/* Attribution Card */
-.attribution-card {
-  background: linear-gradient(135deg, #1f2937 0%, #374151 100%);
-  border: 2px solid #374151;
-  border-radius: 8px;
-  padding: 1.5rem;
-  transition: all 0.2s;
-}
-
-.attribution-card:hover {
-  border-color: #8b5cf6;
-}
-
-.attribution-description {
-  color: #d1d5db;
-  font-size: 1rem;
-  line-height: 1.6;
-  margin: 0 0 1.5rem 0;
-}
-
-.attribution-details {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.attribution-item {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
-.attribution-label {
-  color: #9ca3af;
-  font-size: 0.875rem;
-  font-weight: 600;
-  min-width: 120px;
-}
-
-.attribution-value {
-  color: #d1d5db;
-  font-size: 1rem;
-  font-weight: 600;
-}
-
-.attribution-link {
-  color: #8b5cf6;
-  font-size: 0.875rem;
-  font-weight: 600;
+.attribution__link {
+  color: var(--color-accent);
+  font-size: var(--font-size-caption);
   text-decoration: none;
-  transition: all 0.2s;
   word-break: break-all;
 }
 
-.attribution-link:hover {
-  color: #ec4899;
+.attribution__link:hover {
   text-decoration: underline;
 }
 
-/* Footer */
-.footer {
+.credit-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--color-accent);
+  font-size: var(--font-size-body);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.credit-link:hover {
+  text-decoration: underline;
+}
+
+.credit-link__icon {
+  flex-shrink: 0;
+  display: block;
+}
+
+.about-footer {
   text-align: center;
-  margin-top: 3rem;
-  padding-top: 2rem;
-  border-top: 1px solid #374151;
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
 }
 
-.footer p {
-  color: #9ca3af;
-  margin: 0.5rem 0;
-}
-
-.copyright {
-  font-size: 0.875rem;
+.about-footer p {
+  margin: var(--space-1) 0;
+  font-size: var(--font-size-caption);
+  color: var(--color-text-secondary);
 }
 </style>

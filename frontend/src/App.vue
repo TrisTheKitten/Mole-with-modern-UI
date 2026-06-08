@@ -37,14 +37,23 @@ function setActiveTab(tab) {
 .app-container {
   display: flex;
   height: 100vh;
-  background: #111827;
-  color: #f3f4f6;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background: var(--color-bg-app);
+  color: var(--color-text-primary);
+  font-family: var(--font-family-body);
 }
 
 .main-content {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: var(--space-6);
+  background: var(--color-bg-app);
+}
+
+.main-content > * {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 2rem;
 }
 </style>

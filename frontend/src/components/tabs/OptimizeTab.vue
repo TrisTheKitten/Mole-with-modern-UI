@@ -2,6 +2,15 @@
 import { ref, onMounted, computed } from 'vue'
 import { OptimizeGetTasks, OptimizeExecute } from '../../../wailsjs/go/main/App'
 import { EventsOn } from '../../../wailsjs/runtime/runtime'
+import { handleError } from '../../utils/errorHandler'
+import PageHeader from '../shared/PageHeader.vue'
+import CheckboxRow from '../shared/CheckboxRow.vue'
+import ActionBar from '../shared/ActionBar.vue'
+import AppButton from '../shared/AppButton.vue'
+import ConfirmDialog from '../shared/ConfirmDialog.vue'
+import LoadingPanel from '../shared/LoadingPanel.vue'
+import ProgressPanel from '../shared/ProgressPanel.vue'
+import ResultPanel from '../shared/ResultPanel.vue'
 
 const tasks = ref([])
 const loading = ref(false)
@@ -9,10 +18,9 @@ const optimizing = ref(false)
 const progress = ref(0)
 const progressMessage = ref('')
 const result = ref(null)
+const showConfirmDialog = ref(false)
 
-const selectedTasks = computed(() => {
-  return tasks.value.filter(task => task.selected)
-})
+const selectedTasks = computed(() => tasks.value.filter((task) => task.selected))
 
 onMounted(async () => {
   await getTasks()
@@ -32,34 +40,32 @@ async function getTasks() {
   loading.value = true
   try {
     const data = await OptimizeGetTasks()
-    tasks.value = data.map(task => ({ ...task, selected: true }))
+    tasks.value = data.map((task) => ({ ...task, selected: true }))
   } catch (error) {
-    console.error('Failed to get tasks:', error)
-    alert('Failed to get optimization tasks: ' + error)
+    handleError(error, 'Load Tasks')
   } finally {
     loading.value = false
   }
 }
 
+function requestOptimize() {
+  if (selectedTasks.value.length === 0) {
+    handleError(new Error('Select at least one task'), 'Optimize')
+    return
+  }
+  showConfirmDialog.value = true
+}
+
 async function optimize() {
-  const selected = selectedTasks.value
-  if (selected.length === 0) {
-    alert('Please select at least one task')
-    return
-  }
-
-  if (!confirm(`Run ${selected.length} optimization tasks?`)) {
-    return
-  }
-
   optimizing.value = true
-  const taskIDs = selected.map(task => task.id)
+  progress.value = 0
+  progressMessage.value = 'Starting optimization...'
+  const taskIDs = selectedTasks.value.map((task) => task.id)
 
   try {
     await OptimizeExecute(taskIDs)
   } catch (error) {
-    console.error('Optimization failed:', error)
-    alert('Optimization failed: ' + error)
+    handleError(error, 'Optimize')
     optimizing.value = false
   }
 }
@@ -67,220 +73,132 @@ async function optimize() {
 function toggleTask(task) {
   task.selected = !task.selected
 }
+
+function selectAll() {
+  tasks.value.forEach((task) => {
+    task.selected = true
+  })
+}
+
+function deselectAll() {
+  tasks.value.forEach((task) => {
+    task.selected = false
+  })
+}
 </script>
 
 <template>
   <div class="optimize-tab">
-    <h1>System Optimization</h1>
-    <p class="subtitle">Optimize your Mac for better performance</p>
+    <PageHeader
+      title="System Optimization"
+      subtitle="Optimize your Mac for better performance"
+    />
 
-    <div v-if="loading" class="loading">
-      <div class="spinner"></div>
-      <p>Loading optimization tasks...</p>
-    </div>
+    <ConfirmDialog
+      v-model:show="showConfirmDialog"
+      title="Run Optimization"
+      :message="`Run ${selectedTasks.length} optimization tasks?`"
+      confirm-text="Optimize"
+      cancel-text="Cancel"
+      @confirm="optimize"
+    />
 
-    <div v-else-if="optimizing" class="optimizing">
-      <div class="progress-bar">
-        <div class="progress-fill" :style="{ width: progress + '%' }"></div>
-      </div>
-      <p class="progress-message">{{ progressMessage }}</p>
-      <p class="progress-percent">{{ progress }}%</p>
-    </div>
+    <LoadingPanel v-if="loading" message="Loading tasks" />
 
-    <div v-else-if="result" class="result">
-      <h2>Optimization Complete</h2>
-      <p class="result-info">Successfully optimized {{ result.tasksCompleted }} tasks</p>
-      <button @click="result = null" class="btn-primary">Done</button>
-    </div>
+    <ProgressPanel
+      v-else-if="optimizing"
+      :progress="progress"
+      :message="progressMessage"
+    />
 
-    <div v-else class="task-list">
-      <div class="task-items">
-        <div
-          v-for="task in tasks"
-          :key="task.id"
-          class="task-item"
-          :class="{ selected: task.selected }"
-          @click="toggleTask(task)"
-        >
-          <input type="checkbox" :checked="task.selected" @click.stop />
-          <div class="task-info">
-            <h3>{{ task.name }}</h3>
-            <p>{{ task.description }}</p>
-          </div>
+    <ResultPanel
+      v-else-if="result"
+      title="Optimization Complete"
+      :detail="`Successfully optimized ${result.tasksCompleted} tasks`"
+      @action="result = null"
+    />
+
+    <div v-else class="optimize-content">
+      <div class="summary-bar">
+        <span class="summary-bar__text">{{ selectedTasks.length }} of {{ tasks.length }} selected</span>
+        <div class="summary-bar__controls">
+          <AppButton variant="ghost" @click="selectAll">Select All</AppButton>
+          <AppButton variant="ghost" @click="deselectAll">Deselect All</AppButton>
         </div>
       </div>
 
-      <div class="actions">
-        <button @click="optimize" class="btn-primary" :disabled="selectedTasks.length === 0">
-          Optimize Selected ({{ selectedTasks.length }})
-        </button>
-        <button @click="getTasks" class="btn-secondary">Refresh</button>
+      <div class="task-list">
+        <CheckboxRow
+          v-for="task in tasks"
+          :key="task.id"
+          :title="task.name"
+          :description="task.description"
+          :checked="task.selected"
+          @toggle="toggleTask(task)"
+        />
       </div>
+
+      <ActionBar>
+        <AppButton variant="secondary" @click="getTasks">Refresh</AppButton>
+        <AppButton
+          variant="primary"
+          :disabled="selectedTasks.length === 0"
+          @click="requestOptimize"
+        >
+          Optimize Selected
+        </AppButton>
+      </ActionBar>
     </div>
   </div>
 </template>
 
 <style scoped>
 .optimize-tab {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
   max-width: 900px;
 }
 
-h1 {
-  font-size: 2rem;
-  margin: 0 0 0.5rem 0;
-}
-
-.subtitle {
-  color: #9ca3af;
-  margin: 0 0 2rem 0;
-}
-
-.loading,
-.optimizing {
-  text-align: center;
-  padding: 4rem 2rem;
-}
-
-.spinner {
-  width: 50px;
-  height: 50px;
-  border: 4px solid #374151;
-  border-top-color: #8b5cf6;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin: 0 auto 1rem;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.progress-bar {
-  width: 100%;
-  height: 8px;
-  background: #374151;
-  border-radius: 4px;
-  overflow: hidden;
-  margin-bottom: 1rem;
-}
-
-.progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #8b5cf6, #ec4899);
-  transition: width 0.3s;
-}
-
-.progress-message {
-  color: #d1d5db;
-  margin: 0.5rem 0;
-}
-
-.progress-percent {
-  font-size: 2rem;
-  font-weight: 700;
-  color: #8b5cf6;
-  margin: 1rem 0 0 0;
-}
-
-.result {
-  text-align: center;
-  padding: 4rem 2rem;
-}
-
-.result h2 {
-  color: #10b981;
-  font-size: 2.5rem;
-  margin: 0 0 1rem 0;
-}
-
-.result-info {
-  font-size: 1.5rem;
-  color: #d1d5db;
-  margin: 0 0 2rem 0;
-}
-
-.task-items {
+.optimize-content {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  margin-bottom: 1.5rem;
+  flex: 1;
+  min-height: 0;
 }
 
-.task-item {
+.summary-bar {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 1.25rem;
-  background: #1f2937;
-  border: 2px solid #374151;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
 }
 
-.task-item:hover {
-  border-color: #8b5cf6;
+.summary-bar__text {
+  font-size: var(--font-size-body);
+  font-weight: 500;
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
 }
 
-.task-item.selected {
-  border-color: #8b5cf6;
-  background: #283448;
-}
-
-.task-info {
-  flex: 1;
-}
-
-.task-info h3 {
-  margin: 0 0 0.25rem 0;
-  font-size: 1rem;
-  color: #f3f4f6;
-}
-
-.task-info p {
-  margin: 0;
-  font-size: 0.875rem;
-  color: #9ca3af;
-}
-
-.actions {
+.summary-bar__controls {
   display: flex;
-  gap: 1rem;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
 }
 
-.btn-primary,
-.btn-secondary {
-  padding: 0.75rem 1.5rem;
-  border: none;
-  border-radius: 6px;
-  font-size: 1rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-primary {
-  background: linear-gradient(135deg, #8b5cf6, #ec4899);
-  color: white;
+.task-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
   flex: 1;
-}
-
-.btn-primary:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
-}
-
-.btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-secondary {
-  background: #374151;
-  color: #d1d5db;
-}
-
-.btn-secondary:hover {
-  background: #4b5563;
+  overflow-y: auto;
+  min-height: 0;
+  padding-bottom: var(--space-2);
 }
 </style>
