@@ -7,14 +7,30 @@ defineProps({
 
 const emit = defineEmits(['change-tab'])
 
-const tabs = [
+const PURGE_TAB_ID = 'purge'
+const TOUCH_ID_TAB_ID = 'touchid'
+
+const mainTabs = [
   { id: 'clean', icon: 'clean', label: 'Clean' },
-  { id: 'uninstall', icon: 'uninstall', label: 'Uninstall' },
   { id: 'optimize', icon: 'optimize', label: 'Optimize' },
+  { id: 'installer', icon: 'installer', label: 'Installer Cleanup' },
+  { id: 'uninstall', icon: 'uninstall', label: 'Uninstall' },
+  { id: 'history', icon: 'history', label: 'History' },
+  { id: PURGE_TAB_ID, icon: 'purge', label: 'Purge', disabled: true, badge: 'Soon' },
+  { id: TOUCH_ID_TAB_ID, icon: 'touchid', label: 'TouchID', disabled: true, badge: 'Soon' },
+]
+
+const footerTabs = [
   { id: 'analyze', icon: 'analyze', label: 'Analyze' },
   { id: 'status', icon: 'status', label: 'Status' },
-  { id: 'touchid', icon: 'touchid', label: 'Touch ID' },
 ]
+
+function changeTab(tab) {
+  if (tab.disabled) {
+    return
+  }
+  emit('change-tab', tab.id)
+}
 </script>
 
 <template>
@@ -26,19 +42,33 @@ const tabs = [
 
     <nav class="sidebar__nav" aria-label="Main">
       <button
-        v-for="tab in tabs"
+        v-for="tab in mainTabs"
         :key="tab.id"
         class="sidebar__item"
-        :class="{ 'sidebar__item--active': activeTab === tab.id }"
+        :class="{ 'sidebar__item--active': activeTab === tab.id, 'sidebar__item--disabled': tab.disabled }"
+        :disabled="tab.disabled"
+        :aria-disabled="tab.disabled ? 'true' : undefined"
         :aria-current="activeTab === tab.id ? 'page' : undefined"
-        @click="emit('change-tab', tab.id)"
+        @click="changeTab(tab)"
       >
         <NavIcon :name="tab.icon" />
         <span class="sidebar__label">{{ tab.label }}</span>
+        <span v-if="tab.badge" class="sidebar__badge">{{ tab.badge }}</span>
       </button>
     </nav>
 
     <div class="sidebar__footer">
+      <button
+        v-for="tab in footerTabs"
+        :key="tab.id"
+        class="sidebar__item"
+        :class="{ 'sidebar__item--active': activeTab === tab.id }"
+        :aria-current="activeTab === tab.id ? 'page' : undefined"
+        @click="changeTab(tab)"
+      >
+        <NavIcon :name="tab.icon" />
+        <span class="sidebar__label">{{ tab.label }}</span>
+      </button>
       <button
         class="sidebar__item"
         :class="{ 'sidebar__item--active': activeTab === 'about' }"
@@ -54,7 +84,7 @@ const tabs = [
 
 <style scoped>
 .sidebar {
-  width: 200px;
+  width: 220px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -122,6 +152,20 @@ const tabs = [
   color: var(--color-text-primary);
 }
 
+.sidebar__item:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.sidebar__item--disabled {
+  color: var(--color-text-tertiary);
+}
+
+.sidebar__item--disabled:hover {
+  background: transparent;
+  color: var(--color-text-tertiary);
+}
+
 .sidebar__item--active {
   background: var(--color-selection-bg);
   color: var(--color-selection-text);
@@ -136,5 +180,15 @@ const tabs = [
 .sidebar__label {
   flex: 1;
   line-height: 1.2;
+}
+
+.sidebar__badge {
+  padding: 2px var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-tertiary);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
 }
 </style>

@@ -10,6 +10,7 @@ import (
 
 type Service struct {
 	collector *Collector
+	watcher   *ProcessWatcher
 	ctx       context.Context
 	stopChan  chan struct{}
 	running   bool
@@ -18,6 +19,7 @@ type Service struct {
 func NewService() *Service {
 	return &Service{
 		collector: NewCollector(),
+		watcher:   NewProcessWatcher(),
 		stopChan:  make(chan struct{}),
 		running:   false,
 	}
@@ -76,6 +78,14 @@ func (s *Service) StopMonitoring() {
 	s.stopChan = make(chan struct{})
 }
 
+func (s *Service) GetProcessWatchConfig() models.ProcessWatchConfig {
+	return s.watcher.Config()
+}
+
+func (s *Service) SetProcessWatchConfig(config models.ProcessWatchConfig) error {
+	return s.watcher.SetConfig(config)
+}
+
 // Helper function to convert internal metrics to model
 func (s *Service) convertToModelMetrics(snapshot *MetricsSnapshot) *models.MetricsSnapshot {
 	// Use the primary (first/largest) disk instead of summing all disks
@@ -121,6 +131,9 @@ func (s *Service) convertToModelMetrics(snapshot *MetricsSnapshot) *models.Metri
 			gpuTemp = snapshot.Thermal.GPUTemp
 		}
 	}
+
+	processes := convertProcesses(snapshot.TopProcesses)
+	alerts := s.watcher.Update(snapshot.CollectedAt, snapshot.TopProcesses)
 
 	return &models.MetricsSnapshot{
 		Hardware: models.HardwareInfo{
@@ -177,8 +190,9 @@ func (s *Service) convertToModelMetrics(snapshot *MetricsSnapshot) *models.Metri
 			Temperature: snapshot.Thermal.CPUTemp, // Using CPU temp as proxy
 			FanSpeed:    snapshot.Thermal.FanSpeed,
 		},
-		Processes: convertProcesses(snapshot.TopProcesses),
-		Timestamp: snapshot.CollectedAt,
+		Processes:     processes,
+		ProcessAlerts: alerts,
+		Timestamp:     snapshot.CollectedAt,
 	}
 }
 
@@ -187,7 +201,9 @@ func convertProcesses(processes []ProcessInfo) []models.ProcessInfo {
 	for i, proc := range processes {
 		result[i] = models.ProcessInfo{
 			Name:       proc.Name,
-			PID:        0, // ProcessInfo in status package doesn't have PID
+			PID:        proc.PID,
+			PPID:       proc.PPID,
+			Command:    proc.Command,
 			CPUPercent: proc.CPU,
 			MemoryMB:   int64(proc.Memory),
 		}

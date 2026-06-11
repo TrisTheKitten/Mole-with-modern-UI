@@ -10,6 +10,10 @@ export function AnalyzeGetLargeFiles(arg1, arg2) {
   return window['go']['main']['App']['AnalyzeGetLargeFiles'](arg1, arg2);
 }
 
+export function AnalyzeListExternalVolumes() {
+  return window['go']['main']['App']['AnalyzeListExternalVolumes']();
+}
+
 export function AnalyzeOpenInFinder(arg1) {
   return window['go']['main']['App']['AnalyzeOpenInFinder'](arg1);
 }
@@ -20,6 +24,10 @@ export function AnalyzePickDirectory(arg1) {
 
 export function AnalyzeScanDirectory(arg1) {
   return window['go']['main']['App']['AnalyzeScanDirectory'](arg1);
+}
+
+export function AnalyzeScanExternalVolume(arg1) {
+  return window['go']['main']['App']['AnalyzeScanExternalVolume'](arg1);
 }
 
 export function CleanExecute(arg1, arg2) {
@@ -38,8 +46,24 @@ export function CleanUpdateWhitelist(arg1) {
   return window['go']['main']['App']['CleanUpdateWhitelist'](arg1);
 }
 
+export function HistoryGet(arg1) {
+  return window['go']['main']['App']['HistoryGet'](arg1);
+}
+
+export function InstallerRemove(arg1) {
+  return window['go']['main']['App']['InstallerRemove'](arg1);
+}
+
+export function InstallerScan() {
+  return window['go']['main']['App']['InstallerScan']();
+}
+
 export function OptimizeExecute(arg1) {
   return window['go']['main']['App']['OptimizeExecute'](arg1);
+}
+
+export function OptimizeExecuteWithDryRun(arg1, arg2) {
+  return window['go']['main']['App']['OptimizeExecuteWithDryRun'](arg1, arg2);
 }
 
 export function OptimizeGetTasks() {
@@ -50,12 +74,40 @@ export function OptimizeGetWhitelist() {
   return window['go']['main']['App']['OptimizeGetWhitelist']();
 }
 
+export function OptimizePreview(arg1) {
+  return window['go']['main']['App']['OptimizePreview'](arg1);
+}
+
 export function OptimizeUpdateWhitelist(arg1) {
   return window['go']['main']['App']['OptimizeUpdateWhitelist'](arg1);
 }
 
+export function PurgeExecute(arg1) {
+  return window['go']['main']['App']['PurgeExecute'](arg1);
+}
+
+export function PurgeGetPaths() {
+  return window['go']['main']['App']['PurgeGetPaths']();
+}
+
+export function PurgeScan() {
+  return window['go']['main']['App']['PurgeScan']();
+}
+
+export function PurgeUpdatePaths(arg1) {
+  return window['go']['main']['App']['PurgeUpdatePaths'](arg1);
+}
+
 export function StatusGetMetrics() {
   return window['go']['main']['App']['StatusGetMetrics']();
+}
+
+export function StatusGetProcessWatchConfig() {
+  return window['go']['main']['App']['StatusGetProcessWatchConfig']();
+}
+
+export function StatusSetProcessWatchConfig(arg1) {
+  return window['go']['main']['App']['StatusSetProcessWatchConfig'](arg1);
 }
 
 export function StatusStartMonitoring(arg1) {
@@ -70,20 +122,40 @@ export function TouchIDDisable() {
   return window['go']['main']['App']['TouchIDDisable']();
 }
 
+export function TouchIDDisableWithDryRun(arg1) {
+  return window['go']['main']['App']['TouchIDDisableWithDryRun'](arg1);
+}
+
 export function TouchIDEnable() {
   return window['go']['main']['App']['TouchIDEnable']();
+}
+
+export function TouchIDEnableWithDryRun(arg1) {
+  return window['go']['main']['App']['TouchIDEnableWithDryRun'](arg1);
 }
 
 export function TouchIDGetStatus() {
   return window['go']['main']['App']['TouchIDGetStatus']();
 }
 
+export function TouchIDPreview(arg1) {
+  return window['go']['main']['App']['TouchIDPreview'](arg1);
+}
+
 export function UninstallApps(arg1) {
   return window['go']['main']['App']['UninstallApps'](arg1);
 }
 
+export function UninstallAppsWithDryRun(arg1, arg2) {
+  return window['go']['main']['App']['UninstallAppsWithDryRun'](arg1, arg2);
+}
+
 export function UninstallGetRelatedFiles(arg1) {
   return window['go']['main']['App']['UninstallGetRelatedFiles'](arg1);
+}
+
+export function UninstallPreview(arg1) {
+  return window['go']['main']['App']['UninstallPreview'](arg1);
 }
 
 export function UninstallScanApps(arg1) {

@@ -6,7 +6,9 @@ import {
   AnalyzeGetLargeFiles,
   AnalyzeDeletePath,
   AnalyzeOpenInFinder,
-  AnalyzePickDirectory
+  AnalyzePickDirectory,
+  AnalyzeListExternalVolumes,
+  AnalyzeScanExternalVolume
 } from '../../../wailsjs/go/main/App'
 import { validatePath } from '../../utils/validation'
 import { handleError } from '../../utils/errorHandler'
@@ -28,6 +30,9 @@ const largeFiles = ref([])
 const loading = ref(false)
 const showDeleteDialog = ref(false)
 const deleteTargets = ref([])
+const externalVolumes = ref([])
+const selectedExternalVolume = ref('')
+const showExternalEmpty = ref(false)
 
 const selectedFiles = computed(() => largeFiles.value.filter((file) => file.selected))
 
@@ -49,6 +54,7 @@ onMounted(() => {
   unsubscribeProgress = EventsOn('analyze:progress', (data) => {
     scanProgress.value = data.message || 'Scanning'
   })
+  loadExternalVolumes()
 })
 
 onBeforeUnmount(() => {
@@ -94,6 +100,40 @@ async function scan() {
   } catch (error) {
     handleError(error, 'Disk Analysis')
     scanResult.value = null
+  } finally {
+    scanning.value = false
+  }
+}
+
+async function loadExternalVolumes() {
+  try {
+    externalVolumes.value = await AnalyzeListExternalVolumes()
+    if (externalVolumes.value.length > 0 && !selectedExternalVolume.value) {
+      selectedExternalVolume.value = externalVolumes.value[0].path
+    }
+  } catch (error) {
+    handleError(error, 'External Volumes')
+  }
+}
+
+async function scanExternalVolume() {
+  await loadExternalVolumes()
+  if (externalVolumes.value.length === 0) {
+    showExternalEmpty.value = true
+    return
+  }
+  const target = selectedExternalVolume.value || externalVolumes.value[0].path
+  scanning.value = true
+  scanProgress.value = 'Scanning external volume'
+  try {
+    const result = await AnalyzeScanExternalVolume(target)
+    scanPath.value = target
+    scanResult.value = result
+    const files = await AnalyzeGetLargeFiles(target, 20)
+    largeFiles.value = (files || []).map((file) => ({ ...file, selected: false }))
+    showExternalEmpty.value = false
+  } catch (error) {
+    handleError(error, 'External Volume')
   } finally {
     scanning.value = false
   }
@@ -221,6 +261,19 @@ async function browseDirectory() {
       </AppButton>
     </div>
 
+    <div class="external-controls">
+      <select v-model="selectedExternalVolume" class="external-controls__select" :disabled="scanning">
+        <option v-for="volume in externalVolumes" :key="volume.path" :value="volume.path">
+          {{ volume.name }}
+        </option>
+      </select>
+      <AppButton variant="secondary" :disabled="scanning" @click="scanExternalVolume">
+        Scan Volume
+      </AppButton>
+    </div>
+
+    <EmptyState v-if="showExternalEmpty" message="No external volumes are available" />
+
     <LoadingPanel v-if="scanning" :message="scanProgress || 'Scanning'" />
 
     <div v-else-if="scanResult" class="analyze-results">
@@ -299,6 +352,22 @@ async function browseDirectory() {
   align-items: flex-end;
   gap: var(--space-2);
   margin-bottom: var(--space-4);
+}
+
+.external-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.external-controls__select {
+  min-height: 32px;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-primary);
+  padding: 0 var(--space-2);
 }
 
 .analyze-results {

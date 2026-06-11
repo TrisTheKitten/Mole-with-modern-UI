@@ -11,6 +11,22 @@ set -euo pipefail
 readonly MOLE_TM_THIN_TIMEOUT=180
 readonly MOLE_TM_THIN_VALUE=9999999999
 
+count_local_snapshots() {
+    if ! command -v tmutil > /dev/null 2>&1; then
+        echo 0
+        return
+    fi
+
+    local output
+    output=$(tmutil listlocalsnapshots / 2> /dev/null || true)
+    if [[ -z "$output" ]]; then
+        echo 0
+        return
+    fi
+
+    echo "$output" | grep -c "com.apple.TimeMachine." | tr -d ' '
+}
+
 flush_dns_cache() {
     sudo dscacheutil -flushcache 2> /dev/null && sudo killall -HUP mDNSResponder 2> /dev/null
 }
@@ -294,7 +310,32 @@ opt_sqlite_vacuum() {
     fi
 }
 
-# Clean Spotlight user caches
+opt_process_diagnostic() {
+    local family="$1"
+    local sample1 sample2 totals1 totals2 threshold cpu1 cpu2 avg label note
+    sample1=$(opt_diag_get_ps_sample 1)
+    if [[ -z "${MOLE_OPTIMIZE_PS_SAMPLE_1:-}" || -z "${MOLE_OPTIMIZE_PS_SAMPLE_2:-}" ]]; then
+        sleep "$(opt_diag_sample_delay)"
+    fi
+    sample2=$(opt_diag_get_ps_sample 2)
+    totals1=$(opt_diag_family_totals "$sample1")
+    totals2=$(opt_diag_family_totals "$sample2")
+    threshold=$(opt_diag_cpu_threshold)
+    cpu1=$(opt_diag_family_total_for "$totals1" "$family")
+    cpu2=$(opt_diag_family_total_for "$totals2" "$family")
+    avg=$(opt_diag_float_avg "$cpu1" "$cpu2")
+    label=$(opt_diag_family_label "$family")
+    note=$(opt_diag_family_note "$family")
+
+    if opt_diag_float_ge "$cpu1" "$threshold" && opt_diag_float_ge "$cpu2" "$threshold"; then
+        echo -e "  ${YELLOW}${ICON_WARNING}${NC} ${label} elevated at ~${avg}% CPU"
+        if [[ -n "$note" ]]; then
+            echo -e "  ${GRAY}${ICON_LIST}${NC} $note"
+        fi
+    else
+        echo -e "  ${GREEN}${ICON_SUCCESS}${NC} ${label} activity normal"
+    fi
+}
 
 # Execute optimization by action name
 execute_optimization() {
@@ -313,6 +354,11 @@ execute_optimization() {
         fix_broken_configs) opt_fix_broken_configs ;;
         network_optimization) opt_network_optimization ;;
         sqlite_vacuum) opt_sqlite_vacuum ;;
+        cloudshell) opt_process_diagnostic cloudshell ;;
+        syspolicyd) opt_process_diagnostic syspolicyd ;;
+        windowserver) opt_process_diagnostic windowserver ;;
+        spotlight) opt_process_diagnostic spotlight ;;
+        coresim_disk_images) opt_process_diagnostic coresim_disk_images ;;
         *)
             echo -e "${YELLOW}${ICON_ERROR}${NC} Unknown action: $action"
             return 1

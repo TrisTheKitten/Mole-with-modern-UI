@@ -5,20 +5,22 @@ import "time"
 // Clean service types
 
 type CleanCategory struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Enabled     bool   `json:"enabled"`
-	EstimatedMB int64  `json:"estimatedMB"`
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	Description    string `json:"description"`
+	Enabled        bool   `json:"enabled"`
+	EstimatedMB    int64  `json:"estimatedMB"`
+	EstimatedBytes int64  `json:"estimatedBytes"`
+	RequiresSudo   bool   `json:"requiresSudo"`
 }
 
 type CleanProgress struct {
-	Category    string  `json:"category"`
-	Message     string  `json:"message"`
-	Percent     int     `json:"percent"`
-	CurrentFile string  `json:"currentFile"`
-	TotalFiles  int     `json:"totalFiles"`
-	FilesClean  int     `json:"filesClean"`
+	Category    string `json:"category"`
+	Message     string `json:"message"`
+	Percent     int    `json:"percent"`
+	CurrentFile string `json:"currentFile"`
+	TotalFiles  int    `json:"totalFiles"`
+	FilesClean  int    `json:"filesClean"`
 }
 
 type CleanResult struct {
@@ -38,15 +40,16 @@ type Application struct {
 	LastModified time.Time `json:"lastModified"`
 	Age          string    `json:"age"`
 	Icon         string    `json:"icon,omitempty"`
+	BrewCask     string    `json:"brewCask,omitempty"`
 }
 
 type UninstallProgress struct {
-	App           string `json:"app"`
-	Message       string `json:"message"`
-	Percent       int    `json:"percent"`
-	FilesRemoved  int    `json:"filesRemoved"`
-	TotalFiles    int    `json:"totalFiles"`
-	SpaceFreed    int64  `json:"spaceFreed"`
+	App          string `json:"app"`
+	Message      string `json:"message"`
+	Percent      int    `json:"percent"`
+	FilesRemoved int    `json:"filesRemoved"`
+	TotalFiles   int    `json:"totalFiles"`
+	SpaceFreed   int64  `json:"spaceFreed"`
 }
 
 type UninstallResult struct {
@@ -59,11 +62,11 @@ type UninstallResult struct {
 // Optimize service types
 
 type OptimizationTask struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Enabled     bool   `json:"enabled"`
-	RequiresSudo bool  `json:"requiresSudo"`
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	Description  string `json:"description"`
+	Enabled      bool   `json:"enabled"`
+	RequiresSudo bool   `json:"requiresSudo"`
 }
 
 type OptimizeProgress struct {
@@ -75,6 +78,124 @@ type OptimizeProgress struct {
 type OptimizeResult struct {
 	TasksCompleted int      `json:"tasksCompleted"`
 	Errors         []string `json:"errors"`
+}
+
+type DryRunEntry struct {
+	Action string `json:"action"`
+	Path   string `json:"path,omitempty"`
+	Detail string `json:"detail"`
+}
+
+type DryRunPreview struct {
+	Entries []DryRunEntry `json:"entries"`
+}
+
+type PurgeArtifact struct {
+	Path     string `json:"path"`
+	Type     string `json:"type"`
+	Size     int64  `json:"size"`
+	AgeDays  int    `json:"ageDays"`
+	Selected bool   `json:"selected"`
+}
+
+type PurgeProgress struct {
+	CurrentPath  string `json:"currentPath"`
+	ItemsScanned int    `json:"itemsScanned"`
+}
+
+type PurgeScanResult struct {
+	Artifacts       []PurgeArtifact `json:"artifacts"`
+	Errors          []string        `json:"errors"`
+	TotalSize       int64           `json:"totalSize"`
+	ArtifactCount   int             `json:"artifactCount"`
+	ConfiguredPaths []string        `json:"configuredPaths"`
+	MissingPaths    []string        `json:"missingPaths"`
+}
+
+type PurgeResult struct {
+	SpaceFreed   int64    `json:"spaceFreed"`
+	RemovedCount int      `json:"removedCount"`
+	Errors       []string `json:"errors"`
+}
+
+type InstallerSource string
+
+const (
+	InstallerSourceDownloads InstallerSource = "Downloads"
+	InstallerSourceDesktop   InstallerSource = "Desktop"
+	InstallerSourceDocuments InstallerSource = "Documents"
+	InstallerSourcePublic    InstallerSource = "Public"
+	InstallerSourceLibrary   InstallerSource = "Library"
+	InstallerSourceShared    InstallerSource = "Shared"
+	InstallerSourceHomebrew  InstallerSource = "Homebrew"
+	InstallerSourceICloud    InstallerSource = "iCloud"
+	InstallerSourceMail      InstallerSource = "Mail"
+	InstallerSourceTelegram  InstallerSource = "Telegram"
+)
+
+type InstallerFile struct {
+	Path         string          `json:"path"`
+	Size         int64           `json:"size"`
+	LastModified time.Time       `json:"lastModified"`
+	Source       InstallerSource `json:"source"`
+	Selected     bool            `json:"selected"`
+}
+
+type InstallerProgress struct {
+	CurrentPath  string `json:"currentPath"`
+	ItemsScanned int    `json:"itemsScanned"`
+}
+
+type InstallerScanResult struct {
+	Files     []InstallerFile `json:"files"`
+	Errors    []string        `json:"errors"`
+	TotalSize int64           `json:"totalSize"`
+	FileCount int             `json:"fileCount"`
+}
+
+type InstallerResult struct {
+	SpaceFreed   int64    `json:"spaceFreed"`
+	RemovedCount int      `json:"removedCount"`
+	Errors       []string `json:"errors"`
+}
+
+type HistoryActionCounts struct {
+	Removed int `json:"removed"`
+	Trashed int `json:"trashed"`
+	Skipped int `json:"skipped"`
+	Failed  int `json:"failed"`
+	Rebuilt int `json:"rebuilt"`
+	Other   int `json:"other"`
+}
+
+type HistorySession struct {
+	Command        string              `json:"command"`
+	StartedAt      string              `json:"startedAt"`
+	EndedAt        string              `json:"endedAt"`
+	Items          int                 `json:"items"`
+	Size           string              `json:"size"`
+	OperationCount int                 `json:"operationCount"`
+	Actions        HistoryActionCounts `json:"actions"`
+}
+
+type HistoryDeletion struct {
+	Timestamp string `json:"timestamp"`
+	Mode      string `json:"mode"`
+	Status    string `json:"status"`
+	SizeKB    *int   `json:"sizeKb"`
+	Path      string `json:"path"`
+}
+
+type HistoryLogs struct {
+	Operations string `json:"operations"`
+	Deletions  string `json:"deletions"`
+}
+
+type HistoryResult struct {
+	Logs      HistoryLogs       `json:"logs"`
+	Limit     int               `json:"limit"`
+	Sessions  []HistorySession  `json:"sessions"`
+	Deletions []HistoryDeletion `json:"deletions"`
 }
 
 // Analyze service types
@@ -108,6 +229,12 @@ type ScanProgress struct {
 	TotalSize    int64  `json:"totalSize"`
 }
 
+type ExternalVolume struct {
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	Available bool   `json:"available"`
+}
+
 // Status service types
 
 type MetricsSnapshot struct {
@@ -138,17 +265,20 @@ type MetricsSnapshot struct {
 	// Top processes
 	Processes []ProcessInfo `json:"processes"`
 
+	// Persistent high-CPU process alerts
+	ProcessAlerts []ProcessAlert `json:"processAlerts"`
+
 	// Timestamp
 	Timestamp time.Time `json:"timestamp"`
 }
 
 type HardwareInfo struct {
-	Model      string `json:"model"`
-	Processor  string `json:"processor"`
-	Memory     string `json:"memory"`
-	OS         string `json:"os"`
-	OSVersion  string `json:"osVersion"`
-	Uptime     string `json:"uptime"`
+	Model     string `json:"model"`
+	Processor string `json:"processor"`
+	Memory    string `json:"memory"`
+	OS        string `json:"os"`
+	OSVersion string `json:"osVersion"`
+	Uptime    string `json:"uptime"`
 }
 
 type CPUMetrics struct {
@@ -174,19 +304,19 @@ type MemoryMetrics struct {
 }
 
 type DiskMetrics struct {
-	Used        int64   `json:"used"`
-	Total       int64   `json:"total"`
-	Free        int64   `json:"free"`
-	Percent     float64 `json:"percent"`
-	ReadBytes   int64   `json:"readBytes"`
-	WriteBytes  int64   `json:"writeBytes"`
-	ReadSpeed   float64 `json:"readSpeed"`   // MB/s
-	WriteSpeed  float64 `json:"writeSpeed"`  // MB/s
+	Used       int64   `json:"used"`
+	Total      int64   `json:"total"`
+	Free       int64   `json:"free"`
+	Percent    float64 `json:"percent"`
+	ReadBytes  int64   `json:"readBytes"`
+	WriteBytes int64   `json:"writeBytes"`
+	ReadSpeed  float64 `json:"readSpeed"`  // MB/s
+	WriteSpeed float64 `json:"writeSpeed"` // MB/s
 }
 
 type NetworkMetrics struct {
-	Download    float64 `json:"download"`    // MB/s
-	Upload      float64 `json:"upload"`      // MB/s
+	Download    float64 `json:"download"` // MB/s
+	Upload      float64 `json:"upload"`   // MB/s
 	ProxyHost   string  `json:"proxyHost"`
 	ProxyPort   string  `json:"proxyPort"`
 	ProxyType   string  `json:"proxyType"`
@@ -194,19 +324,38 @@ type NetworkMetrics struct {
 }
 
 type BatteryMetrics struct {
-	Level      int     `json:"level"`      // Percentage
-	Status     string  `json:"status"`     // Charging, Charged, Discharging
-	Health     string  `json:"health"`     // Normal, Replace Soon, Replace Now
-	Cycles     int     `json:"cycles"`
+	Level       int     `json:"level"`  // Percentage
+	Status      string  `json:"status"` // Charging, Charged, Discharging
+	Health      string  `json:"health"` // Normal, Replace Soon, Replace Now
+	Cycles      int     `json:"cycles"`
 	Temperature float64 `json:"temperature"`
-	FanSpeed   int     `json:"fanSpeed"`   // RPM
+	FanSpeed    int     `json:"fanSpeed"` // RPM
 }
 
 type ProcessInfo struct {
 	Name       string  `json:"name"`
 	PID        int     `json:"pid"`
+	PPID       int     `json:"ppid"`
+	Command    string  `json:"command"`
 	CPUPercent float64 `json:"cpuPercent"`
 	MemoryMB   int64   `json:"memoryMB"`
+}
+
+type ProcessAlert struct {
+	PID           int       `json:"pid"`
+	Name          string    `json:"name"`
+	Command       string    `json:"command"`
+	CPUPercent    float64   `json:"cpuPercent"`
+	Threshold     float64   `json:"threshold"`
+	WindowSeconds int       `json:"windowSeconds"`
+	TriggeredAt   time.Time `json:"triggeredAt"`
+	Status        string    `json:"status"`
+}
+
+type ProcessWatchConfig struct {
+	Threshold     float64 `json:"threshold"`
+	WindowSeconds int     `json:"windowSeconds"`
+	Enabled       bool    `json:"enabled"`
 }
 
 // TouchID service types

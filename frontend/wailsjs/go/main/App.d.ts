@@ -6,11 +6,15 @@ export function AnalyzeDeletePath(arg1:string):Promise<void>;
 
 export function AnalyzeGetLargeFiles(arg1:string,arg2:number):Promise<Array<models.FileEntry>>;
 
+export function AnalyzeListExternalVolumes():Promise<Array<models.ExternalVolume>>;
+
 export function AnalyzeOpenInFinder(arg1:string):Promise<void>;
 
 export function AnalyzePickDirectory(arg1:string):Promise<string>;
 
 export function AnalyzeScanDirectory(arg1:string):Promise<models.ScanResult>;
+
+export function AnalyzeScanExternalVolume(arg1:string):Promise<models.ScanResult>;
 
 export function CleanExecute(arg1:Array<string>,arg2:boolean):Promise<void>;
 
@@ -20,15 +24,37 @@ export function CleanScanTargets():Promise<Array<models.CleanCategory>>;
 
 export function CleanUpdateWhitelist(arg1:Array<string>):Promise<void>;
 
+export function HistoryGet(arg1:number):Promise<models.HistoryResult>;
+
+export function InstallerRemove(arg1:Array<string>):Promise<models.InstallerResult>;
+
+export function InstallerScan():Promise<models.InstallerScanResult>;
+
 export function OptimizeExecute(arg1:Array<string>):Promise<void>;
+
+export function OptimizeExecuteWithDryRun(arg1:Array<string>,arg2:boolean):Promise<void>;
 
 export function OptimizeGetTasks():Promise<Array<models.OptimizationTask>>;
 
 export function OptimizeGetWhitelist():Promise<Array<string>>;
 
+export function OptimizePreview(arg1:Array<string>):Promise<models.DryRunPreview>;
+
 export function OptimizeUpdateWhitelist(arg1:Array<string>):Promise<void>;
 
+export function PurgeExecute(arg1:Array<string>):Promise<models.PurgeResult>;
+
+export function PurgeGetPaths():Promise<Array<string>>;
+
+export function PurgeScan():Promise<models.PurgeScanResult>;
+
+export function PurgeUpdatePaths(arg1:Array<string>):Promise<void>;
+
 export function StatusGetMetrics():Promise<models.MetricsSnapshot>;
+
+export function StatusGetProcessWatchConfig():Promise<models.ProcessWatchConfig>;
+
+export function StatusSetProcessWatchConfig(arg1:models.ProcessWatchConfig):Promise<void>;
 
 export function StatusStartMonitoring(arg1:number):Promise<void>;
 
@@ -36,12 +62,22 @@ export function StatusStopMonitoring():Promise<void>;
 
 export function TouchIDDisable():Promise<void>;
 
+export function TouchIDDisableWithDryRun(arg1:boolean):Promise<void>;
+
 export function TouchIDEnable():Promise<void>;
+
+export function TouchIDEnableWithDryRun(arg1:boolean):Promise<void>;
 
 export function TouchIDGetStatus():Promise<models.TouchIDStatus>;
 
+export function TouchIDPreview(arg1:string):Promise<models.DryRunPreview>;
+
 export function UninstallApps(arg1:Array<string>):Promise<void>;
 
+export function UninstallAppsWithDryRun(arg1:Array<string>,arg2:boolean):Promise<void>;
+
 export function UninstallGetRelatedFiles(arg1:string):Promise<Array<string>>;
+
+export function UninstallPreview(arg1:Array<string>):Promise<models.DryRunPreview>;
 
 export function UninstallScanApps(arg1:boolean):Promise<Array<models.Application>>;

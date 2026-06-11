@@ -5,23 +5,37 @@ import githubIcon from '../../assets/icons/github.svg'
 
 const appInfo = {
   name: 'MoleUI - Deep Clean & Optimize',
-  version: '1.0.0',
+  version: '2.0.0',
   description: 'Visual interface for the Mole CLI - Advanced macOS system maintenance and optimization tool',
 }
 
 const features = [
-  { icon: 'pi-eraser', title: 'System Cleanup', description: 'Remove cache, logs, and temporary files' },
-  { icon: 'pi-trash', title: 'Application Management', description: 'Uninstall and optimize applications' },
-  { icon: 'pi-chart-bar', title: 'Disk Space Analysis', description: 'Visualize and analyze disk usage' },
-  { icon: 'pi-chart-line', title: 'System Monitoring', description: 'Real-time CPU, Memory, Disk, and Network metrics' },
-  { icon: 'pi-lock', title: 'Touch ID Management', description: 'Manage Touch ID authentication settings' },
+  { icon: 'pi-eraser', title: 'System Cleanup', description: 'Remove caches, logs, and temporary files' },
+  { icon: 'pi-box', title: 'Installer Cleanup', description: 'Find and remove leftover installer downloads' },
+  { icon: 'pi-history', title: 'Operation History', description: 'Review past cleanup and maintenance sessions' },
+  { icon: 'pi-trash', title: 'App Uninstaller', description: 'Remove apps and all associated files' },
+  { icon: 'pi-bolt', title: 'System Optimization', description: 'Rebuild caches and refresh system services' },
+  { icon: 'pi-chart-bar', title: 'Disk Space Analysis', description: 'Visualize usage and find large files' },
+  { icon: 'pi-chart-line', title: 'System Monitoring', description: 'Real-time CPU, memory, disk, and network metrics' },
+  { icon: 'pi-lock', title: 'Touch ID Setup', description: 'Configure Touch ID for sudo commands' },
 ]
 
+const moleCLI = {
+  version: 'v1.42.0',
+  codename: 'Otter',
+}
+
 const techStack = [
-  { label: 'Frontend', value: 'Vue 3 + Vite' },
-  { label: 'Backend', value: 'Go + Wails v2' },
+  { label: 'Frontend', value: 'Vue 3 + Pinia + Vite' },
+  { label: 'Backend', value: 'Go 1.24 + Wails v2' },
+  { label: 'Core Engine', value: `Mole CLI ${moleCLI.version} ${moleCLI.codename}` },
   { label: 'Platform', value: 'macOS (Apple Silicon & Intel)' },
 ]
+
+const originalMoleUI = {
+  owner: 'roniel-rhack',
+  repoUrl: 'https://github.com/roniel-rhack/mole-ui',
+}
 
 const uiDeveloper = {
   name: 'Tris The Kitten',
@@ -35,9 +49,10 @@ const credits = [
 
 const coreAttribution = {
   title: 'Based on Mole CLI',
-  description: 'This application uses the Mole project as its core engine, providing a visual interface to the powerful command-line tool.',
+  description: `This build is based on Mole CLI ${moleCLI.version} ${moleCLI.codename}, providing a visual interface to the powerful command-line tool.`,
   repoUrl: 'https://github.com/tw93/Mole',
   author: 'tw93',
+  bundledVersion: `${moleCLI.version} ${moleCLI.codename}`,
 }
 </script>
 
@@ -87,6 +102,24 @@ const coreAttribution = {
     <section class="about-section">
       <h3 class="about-section__title">Credits</h3>
       <div class="about-section__card">
+        <InfoRow label="Original MoleUI">
+          <a
+            :href="originalMoleUI.repoUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="credit-link"
+          >
+            <img
+              :src="githubIcon"
+              alt=""
+              class="credit-link__icon"
+              width="16"
+              height="16"
+              aria-hidden="true"
+            />
+            {{ originalMoleUI.owner }}/mole-ui
+          </a>
+        </InfoRow>
         <InfoRow label="UI Developer">
           <a
             :href="uiDeveloper.url"
@@ -126,13 +159,22 @@ const coreAttribution = {
             class="attribution__link"
           >{{ coreAttribution.repoUrl }}</a>
         </InfoRow>
+        <InfoRow label="Bundled Version" :value="coreAttribution.bundledVersion" />
         <InfoRow label="Author" :value="coreAttribution.author" />
       </div>
     </section>
 
     <footer class="about-footer">
-      <p>Built with care for macOS users</p>
-      <p class="about-footer__copyright">&copy; 2025 MoleUI. All rights reserved.</p>
+      <p class="about-footer__disclaimer">
+        MoleUI is an open-source UI wrapper for Mole CLI by
+        <a
+          :href="coreAttribution.repoUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="attribution__link"
+        >{{ coreAttribution.author }}</a>.
+        All credit for the core project belongs to the original author.
+      </p>
     </footer>
   </div>
 </template>
@@ -297,9 +339,12 @@ const coreAttribution = {
   border-top: 1px solid var(--color-border);
 }
 
-.about-footer p {
-  margin: var(--space-1) 0;
+.about-footer__disclaimer {
+  margin: 0;
   font-size: var(--font-size-caption);
   color: var(--color-text-secondary);
+  line-height: 1.5;
+  max-width: 36rem;
+  margin-inline: auto;
 }
 </style>

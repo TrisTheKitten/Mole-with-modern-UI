@@ -38,6 +38,8 @@ const gpuUsage = computed(() => {
   return num
 })
 
+const processAlerts = computed(() => metrics.value?.processAlerts || [])
+
 function formatBytes(bytes) {
   if (bytes === 0) return '0 B'
   const k = 1024
@@ -232,6 +234,15 @@ onUnmounted(() => {
 
     <div v-else-if="metrics" class="status-content">
       <StatusHealthSummary :score="healthScore" :status="healthStatus" />
+
+      <div v-if="processAlerts.length" class="process-alerts">
+        <h2 class="process-alerts__title">High CPU</h2>
+        <div v-for="alert in processAlerts" :key="`${alert.pid}-${alert.command}`" class="process-alerts__row">
+          <span>{{ alert.name }}</span>
+          <span>PID {{ alert.pid }}</span>
+          <span>{{ formatPercent(alert.cpuPercent) }}</span>
+        </div>
+      </div>
 
       <div class="status-group">
         <ResourceSection
@@ -466,6 +477,30 @@ onUnmounted(() => {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   overflow: hidden;
+}
+
+.process-alerts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-warning);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-surface);
+}
+
+.process-alerts__title {
+  margin: 0;
+  font-size: var(--font-size-body);
+  color: var(--color-text-primary);
+}
+
+.process-alerts__row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: var(--space-3);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-caption);
 }
 
 .status-group > :deep(* + *) {

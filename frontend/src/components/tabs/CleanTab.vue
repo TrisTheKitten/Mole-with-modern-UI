@@ -231,7 +231,11 @@ function formatSize(mb) {
           :checked="category.enabled"
           :muted="category.estimatedMB === 0"
           @toggle="toggleCategory(category)"
-        />
+        >
+          <template #trailing>
+            <span v-if="category.requiresSudo" class="privilege-badge">Privileges</span>
+          </template>
+        </CheckboxRow>
       </div>
 
       <div class="clean-footer">
@@ -309,6 +313,12 @@ function formatSize(mb) {
 
 .category-item {
   animation: category-reveal 0.35s ease both;
+}
+
+.privilege-badge {
+  color: var(--color-warning);
+  font-size: var(--font-size-caption);
+  font-weight: 600;
 }
 
 .clean-footer {

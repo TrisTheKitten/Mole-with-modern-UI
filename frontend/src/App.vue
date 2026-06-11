@@ -2,6 +2,9 @@
 import { ref } from 'vue'
 import Sidebar from './components/layout/Sidebar.vue'
 import CleanTab from './components/tabs/CleanTab.vue'
+import PurgeTab from './components/tabs/PurgeTab.vue'
+import InstallerTab from './components/tabs/InstallerTab.vue'
+import HistoryTab from './components/tabs/HistoryTab.vue'
 import UninstallTab from './components/tabs/UninstallTab.vue'
 import OptimizeTab from './components/tabs/OptimizeTab.vue'
 import AnalyzeTab from './components/tabs/AnalyzeTab.vue'
@@ -22,6 +25,9 @@ function setActiveTab(tab) {
     <Sidebar :active-tab="activeTab" @change-tab="setActiveTab" />
     <main class="main-content">
       <CleanTab v-if="activeTab === 'clean'" />
+      <PurgeTab v-else-if="activeTab === 'purge'" />
+      <InstallerTab v-else-if="activeTab === 'installer'" />
+      <HistoryTab v-else-if="activeTab === 'history'" />
       <UninstallTab v-else-if="activeTab === 'uninstall'" />
       <OptimizeTab v-else-if="activeTab === 'optimize'" />
       <AnalyzeTab v-else-if="activeTab === 'analyze'" />

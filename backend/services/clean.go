@@ -15,11 +15,12 @@ import (
 
 // cleanCategory represents a category of files to clean
 type cleanCategory struct {
-	id          string
-	name        string
-	description string
-	paths       []string
-	getSizeFn   func(string) (int64, error) // Custom size calculation if needed
+	id           string
+	name         string
+	description  string
+	paths        []string
+	requiresSudo bool
+	getSizeFn    func(string) (int64, error) // Custom size calculation if needed
 }
 
 type CleanService struct {
@@ -32,7 +33,7 @@ func NewCleanService(scriptsPath string) *CleanService {
 	homeDir := os.Getenv("HOME")
 
 	return &CleanService{
-		whitelist:  make(map[string]bool),
+		whitelist: make(map[string]bool),
 		categories: []cleanCategory{
 			{
 				id:          "system-caches",
@@ -51,9 +52,10 @@ func NewCleanService(scriptsPath string) *CleanService {
 				},
 			},
 			{
-				id:          "temp-files",
-				name:        "Temporary Files",
-				description: "System temporary files",
+				id:           "temp-files",
+				name:         "Temporary Files",
+				description:  "System temporary files",
+				requiresSudo: true,
 				paths: []string{
 					"/tmp",
 					"/private/var/tmp",
@@ -106,6 +108,35 @@ func NewCleanService(scriptsPath string) *CleanService {
 				paths: []string{
 					filepath.Join(homeDir, "Library", "Mail", "V10", "MailData", "Envelope Index-wal"),
 					filepath.Join(homeDir, "Library", "Caches", "com.apple.mail"),
+				},
+			},
+			{
+				id:          "hints",
+				name:        "Maintenance Hints",
+				description: "Non-destructive cleanup guidance from Mole",
+				paths:       []string{},
+			},
+			{
+				id:           "launch_services",
+				name:         "Launch Services",
+				description:  "Stale LaunchServices records",
+				requiresSudo: true,
+				paths:        []string{},
+			},
+			{
+				id:          "maven",
+				name:        "Maven Artifacts",
+				description: "Local Maven repository artifacts",
+				paths: []string{
+					filepath.Join(homeDir, ".m2", "repository"),
+				},
+			},
+			{
+				id:          "purge_shared",
+				name:        "Shared Purge Data",
+				description: "Shared project cleanup data",
+				paths: []string{
+					filepath.Join(homeDir, ".cache", "mole", "purge"),
 				},
 			},
 		},
@@ -165,11 +196,13 @@ func (s *CleanService) ScanTargets() ([]models.CleanCategory, error) {
 		estimatedMB := estimatedSize / (1024 * 1024)
 
 		results = append(results, models.CleanCategory{
-			ID:          cat.id,
-			Name:        cat.name,
-			Description: cat.description,
-			Enabled:     true,
-			EstimatedMB: estimatedMB,
+			ID:             cat.id,
+			Name:           cat.name,
+			Description:    cat.description,
+			Enabled:        true,
+			EstimatedMB:    estimatedMB,
+			EstimatedBytes: estimatedSize,
+			RequiresSudo:   cat.requiresSudo,
 		})
 	}
 

@@ -50,9 +50,12 @@ type DiskIOStatus struct {
 }
 
 type ProcessInfo struct {
-	Name   string
-	CPU    float64
-	Memory float64
+	PID     int
+	PPID    int
+	Name    string
+	Command string
+	CPU     float64
+	Memory  float64
 }
 
 type CPUStatus struct {

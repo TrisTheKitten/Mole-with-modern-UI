@@ -23,6 +23,9 @@ SYSTEM_CLEAN=false
 DRY_RUN=false
 PROTECT_FINDER_METADATA=false
 IS_M_SERIES=$([[ "$(uname -m)" == "arm64" ]] && echo "true" || echo "false")
+readonly CLEAN_HISTORY_COMMAND="Clean"
+readonly CLEAN_HISTORY_DELETE_MODE="permanent"
+readonly CLEAN_HISTORY_REMOVED_ACTION="REMOVED"
 
 EXPORT_LIST_FILE="$HOME/.config/mole/clean-list.txt"
 CURRENT_SECTION=""
@@ -320,6 +323,10 @@ safe_clean() {
                         else
                             safe_remove "$path" true || true
                         fi
+                        if [[ ! -e "$path" ]]; then
+                            history_append_operation_line "$CLEAN_HISTORY_COMMAND" "$CLEAN_HISTORY_REMOVED_ACTION" "$path"
+                            history_append_deletion "$CLEAN_HISTORY_DELETE_MODE" "$size" "removed" "$path"
+                        fi
                     fi
                     ((total_size_bytes += size))
                     ((total_count += 1))
@@ -344,6 +351,10 @@ safe_clean() {
                         rm "$path" 2> /dev/null || true
                     else
                         safe_remove "$path" true || true
+                    fi
+                    if [[ ! -e "$path" ]]; then
+                        history_append_operation_line "$CLEAN_HISTORY_COMMAND" "$CLEAN_HISTORY_REMOVED_ACTION" "$path"
+                        history_append_deletion "$CLEAN_HISTORY_DELETE_MODE" "$size_bytes" "removed" "$path"
                     fi
                 fi
                 ((total_size_bytes += size_bytes))
@@ -472,6 +483,8 @@ start_cleanup() {
 EOF
         return
     fi
+
+    history_append_session_start "$CLEAN_HISTORY_COMMAND"
 
     if [[ -t 0 ]]; then
         echo -ne "${PURPLE}${ICON_ARROW}${NC} System caches need sudo — ${GREEN}Enter${NC} continue, ${GRAY}Space${NC} skip: "
@@ -766,6 +779,9 @@ main() {
     start_cleanup
     hide_cursor
     perform_cleanup
+    if [[ "$DRY_RUN" != "true" ]]; then
+        history_append_session_end "$CLEAN_HISTORY_COMMAND" "$files_cleaned" "$(bytes_to_human "$((total_size_cleaned * 1024))")"
+    fi
     show_cursor
 }
 

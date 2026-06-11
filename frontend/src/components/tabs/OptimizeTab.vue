@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
-import { OptimizeGetTasks, OptimizeExecute } from '../../../wailsjs/go/main/App'
+import { OptimizeGetTasks, OptimizeExecute, OptimizePreview } from '../../../wailsjs/go/main/App'
 import { EventsOn } from '../../../wailsjs/runtime/runtime'
 import { handleError } from '../../utils/errorHandler'
 import PageHeader from '../shared/PageHeader.vue'
@@ -19,8 +19,21 @@ const progress = ref(0)
 const progressMessage = ref('')
 const result = ref(null)
 const showConfirmDialog = ref(false)
+const dryRun = ref(false)
+const preview = ref(null)
 
 const selectedTasks = computed(() => tasks.value.filter((task) => task.selected))
+const resultTitle = computed(() => {
+  if (!result.value?.errors?.length) return 'Optimization Complete'
+  if (result.value.tasksCompleted > 0) return 'Optimization Partial'
+  return 'Optimization Failed'
+})
+const resultDetail = computed(() => {
+  if (!result.value) return ''
+  const completed = `${result.value.tasksCompleted} tasks completed`
+  if (!result.value.errors?.length) return completed
+  return `${completed} · ${result.value.errors.join('; ')}`
+})
 
 onMounted(async () => {
   await getTasks()
@@ -53,6 +66,10 @@ function requestOptimize() {
     handleError(new Error('Select at least one task'), 'Optimize')
     return
   }
+  if (dryRun.value) {
+    optimize()
+    return
+  }
   showConfirmDialog.value = true
 }
 
@@ -63,10 +80,20 @@ async function optimize() {
   const taskIDs = selectedTasks.value.map((task) => task.id)
 
   try {
-    await OptimizeExecute(taskIDs)
+    if (dryRun.value) {
+      preview.value = await OptimizePreview(taskIDs)
+      result.value = null
+    } else {
+      await OptimizeExecute(taskIDs)
+      preview.value = null
+    }
   } catch (error) {
     handleError(error, 'Optimize')
     optimizing.value = false
+  } finally {
+    if (dryRun.value) {
+      optimizing.value = false
+    }
   }
 }
 
@@ -113,8 +140,8 @@ function deselectAll() {
 
     <ResultPanel
       v-else-if="result"
-      title="Optimization Complete"
-      :detail="`Successfully optimized ${result.tasksCompleted} tasks`"
+      :title="resultTitle"
+      :detail="resultDetail"
       @action="result = null"
     />
 
@@ -122,9 +149,21 @@ function deselectAll() {
       <div class="summary-bar">
         <span class="summary-bar__text">{{ selectedTasks.length }} of {{ tasks.length }} selected</span>
         <div class="summary-bar__controls">
+          <label class="dry-run-toggle">
+            <input v-model="dryRun" type="checkbox">
+            <span>Dry Run</span>
+          </label>
           <AppButton variant="ghost" @click="selectAll">Select All</AppButton>
           <AppButton variant="ghost" @click="deselectAll">Deselect All</AppButton>
         </div>
+      </div>
+
+      <div v-if="preview" class="preview-panel">
+        <h2 class="preview-panel__title">Preview</h2>
+        <p v-if="preview.entries.length === 0" class="preview-panel__empty">No changes</p>
+        <ul v-else class="preview-panel__list">
+          <li v-for="entry in preview.entries" :key="`${entry.action}-${entry.detail}`">{{ entry.detail }}</li>
+        </ul>
       </div>
 
       <div class="task-list">
@@ -200,5 +239,33 @@ function deselectAll() {
   overflow-y: auto;
   min-height: 0;
   padding-bottom: var(--space-2);
+}
+
+.dry-run-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-caption);
+}
+
+.preview-panel {
+  margin-bottom: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-surface);
+}
+
+.preview-panel__title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-body);
+}
+
+.preview-panel__empty,
+.preview-panel__list {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-caption);
 }
 </style>

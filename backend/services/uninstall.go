@@ -3,6 +3,7 @@ package services
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,6 +14,8 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"mole-wails/backend/models"
 )
+
+const unknownBundleID = "unknown"
 
 type UninstallService struct {
 	scriptsPath string
@@ -31,15 +34,6 @@ func (s *UninstallService) SetContext(ctx context.Context) {
 
 // ScanApplications scans installed applications
 func (s *UninstallService) ScanApplications(forceRescan bool) ([]models.Application, error) {
-	scriptPath := filepath.Join(s.scriptsPath, "bin", "uninstall.sh")
-
-	args := []string{scriptPath}
-	if forceRescan {
-		args = append(args, "--force-rescan")
-	}
-
-	// We need to run the script and parse its output
-	// For now, we'll scan applications directories directly
 	var apps []models.Application
 
 	appDirs := []string{
@@ -77,6 +71,7 @@ func (s *UninstallService) ScanApplications(forceRescan bool) ([]models.Applicat
 				Size:         size,
 				LastModified: info.ModTime(),
 				Age:          age,
+				BrewCask:     s.detectBrewCask(appPath),
 			})
 		}
 	}
@@ -85,66 +80,94 @@ func (s *UninstallService) ScanApplications(forceRescan bool) ([]models.Applicat
 }
 
 // UninstallApps uninstalls selected applications
-func (s *UninstallService) UninstallApps(apps []string) error {
-	scriptPath := filepath.Join(s.scriptsPath, "bin", "uninstall.sh")
-
-	for i, app := range apps {
-		// Execute uninstall script for each app
-		cmd := exec.Command("/bin/bash", scriptPath, app)
-
-		stdout, err := cmd.StdoutPipe()
+func (s *UninstallService) UninstallApps(appIdentifiers []string, dryRun bool) error {
+	if dryRun {
+		preview, err := s.PreviewUninstall(appIdentifiers)
 		if err != nil {
-			return fmt.Errorf("failed to create stdout pipe: %w", err)
+			return err
 		}
-
-		if err := cmd.Start(); err != nil {
-			return fmt.Errorf("failed to start uninstall: %w", err)
+		if s.ctx != nil {
+			runtime.EventsEmit(s.ctx, "uninstall:complete", models.UninstallResult{
+				AppsRemoved:  0,
+				FilesRemoved: len(preview.Entries),
+			})
 		}
-
-		// Stream progress
-		scanner := bufio.NewScanner(stdout)
-		filesRemoved := 0
-
-		for scanner.Scan() {
-			line := scanner.Text()
-
-			if strings.Contains(line, "✓ Removed") {
-				filesRemoved++
-			}
-
-			percent := ((i + 1) * 100) / len(apps)
-
-			progress := models.UninstallProgress{
-				App:          app,
-				Message:      line,
-				Percent:      percent,
-				FilesRemoved: filesRemoved,
-			}
-
-			if s.ctx != nil {
-				runtime.EventsEmit(s.ctx, "uninstall:progress", progress)
-			}
-		}
-
-		if err := cmd.Wait(); err != nil {
-			return fmt.Errorf("uninstall failed for %s: %w", app, err)
-		}
+		return nil
 	}
 
-	result := models.UninstallResult{
-		AppsRemoved: len(apps),
+	apps, err := s.resolveApplications(appIdentifiers)
+	if err != nil {
+		return err
+	}
+
+	result := models.UninstallResult{}
+	progressPercent := 0
+
+	for i, app := range apps {
+		progressPercent = (i * 100) / len(apps)
+		s.emitProgress(app.Name, "Uninstalling "+app.Name, progressPercent, result.FilesRemoved, result.SpaceFreed)
+
+		removedFiles, freedBytes, err := s.uninstallApplication(app)
+		if err != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: %s", app.Name, err.Error()))
+			continue
+		}
+
+		result.AppsRemoved++
+		result.FilesRemoved += removedFiles
+		result.SpaceFreed += freedBytes
+		progressPercent = ((i + 1) * 100) / len(apps)
+		s.emitProgress(app.Name, "Removed "+app.Name, progressPercent, result.FilesRemoved, result.SpaceFreed)
+	}
+
+	if result.AppsRemoved == 0 {
+		if len(result.Errors) == 0 {
+			return errors.New("no applications were uninstalled")
+		}
+		return fmt.Errorf("uninstall failed: %s", strings.Join(result.Errors, "; "))
 	}
 
 	if s.ctx != nil {
+		s.emitProgress("", "Uninstall finished", 100, result.FilesRemoved, result.SpaceFreed)
 		runtime.EventsEmit(s.ctx, "uninstall:complete", result)
 	}
 
 	return nil
 }
 
+func (s *UninstallService) PreviewUninstall(appIdentifiers []string) (models.DryRunPreview, error) {
+	apps, err := s.resolveApplications(appIdentifiers)
+	if err != nil {
+		return models.DryRunPreview{}, err
+	}
+
+	entries := make([]models.DryRunEntry, 0)
+	for _, app := range apps {
+		entries = append(entries, models.DryRunEntry{Action: "remove", Path: app.Path, Detail: app.Name})
+		files, err := s.GetRelatedFiles(app.Path)
+		if err != nil {
+			return models.DryRunPreview{}, fmt.Errorf("preview failed for %s: %w", app.Name, err)
+		}
+		for _, file := range files {
+			entries = append(entries, models.DryRunEntry{Action: "remove", Path: file, Detail: file})
+		}
+	}
+	return models.DryRunPreview{Entries: entries}, nil
+}
+
 // GetRelatedFiles finds all files related to an application
-func (s *UninstallService) GetRelatedFiles(bundleID string) ([]string, error) {
-	// Search common locations for app-related files
+func (s *UninstallService) GetRelatedFiles(identifier string) ([]string, error) {
+	bundleID := identifier
+	appName := ""
+	if app, ok := s.resolveApplication(identifier); ok {
+		bundleID = app.BundleID
+		appName = app.Name
+	}
+
+	if bundleID == "" || bundleID == unknownBundleID {
+		return []string{}, nil
+	}
+
 	searchPaths := []string{
 		filepath.Join(os.Getenv("HOME"), "Library", "Application Support"),
 		filepath.Join(os.Getenv("HOME"), "Library", "Caches"),
@@ -162,7 +185,7 @@ func (s *UninstallService) GetRelatedFiles(bundleID string) ([]string, error) {
 		}
 
 		for _, entry := range entries {
-			if strings.Contains(entry.Name(), bundleID) {
+			if matchesApplicationFile(entry.Name(), bundleID, appName) {
 				relatedFiles = append(relatedFiles, filepath.Join(searchPath, entry.Name()))
 			}
 		}
@@ -172,6 +195,167 @@ func (s *UninstallService) GetRelatedFiles(bundleID string) ([]string, error) {
 }
 
 // Helper functions
+
+func (s *UninstallService) resolveApplications(identifiers []string) ([]models.Application, error) {
+	if len(identifiers) == 0 {
+		return nil, errors.New("select at least one app")
+	}
+
+	allApps, err := s.ScanApplications(false)
+	if err != nil {
+		return nil, err
+	}
+
+	apps := make([]models.Application, 0, len(identifiers))
+	missing := make([]string, 0)
+
+	for _, identifier := range identifiers {
+		app, ok := findApplication(allApps, identifier)
+		if !ok {
+			missing = append(missing, identifier)
+			continue
+		}
+		apps = append(apps, app)
+	}
+
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("applications not found: %s", strings.Join(missing, ", "))
+	}
+
+	return apps, nil
+}
+
+func (s *UninstallService) resolveApplication(identifier string) (models.Application, bool) {
+	allApps, err := s.ScanApplications(false)
+	if err != nil {
+		return models.Application{}, false
+	}
+	return findApplication(allApps, identifier)
+}
+
+func findApplication(apps []models.Application, identifier string) (models.Application, bool) {
+	for _, app := range apps {
+		if app.Path == identifier {
+			return app, true
+		}
+	}
+	for _, app := range apps {
+		if app.BundleID != "" && app.BundleID != unknownBundleID && app.BundleID == identifier {
+			return app, true
+		}
+	}
+	return models.Application{}, false
+}
+
+func (s *UninstallService) uninstallApplication(app models.Application) (int, int64, error) {
+	if app.Path == "" || !strings.HasSuffix(app.Path, ".app") {
+		return 0, 0, errors.New("invalid app path")
+	}
+	if _, err := os.Stat(app.Path); err != nil {
+		return 0, 0, fmt.Errorf("app is not available: %w", err)
+	}
+
+	relatedFiles, err := s.GetRelatedFiles(app.Path)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	spaceFreed := app.Size
+	for _, relatedFile := range relatedFiles {
+		size, err := s.getPathSize(relatedFile)
+		if err == nil {
+			spaceFreed += size
+		}
+	}
+
+	if app.BrewCask != "" {
+		if err := s.uninstallBrewCask(app); err != nil {
+			return 0, 0, err
+		}
+	} else if err := os.RemoveAll(app.Path); err != nil {
+		return 0, 0, err
+	}
+
+	if _, err := os.Stat(app.Path); err == nil {
+		return 0, 0, errors.New("app is still installed")
+	} else if !os.IsNotExist(err) {
+		return 0, 0, err
+	}
+
+	removedFiles := 1
+	for _, relatedFile := range relatedFiles {
+		if !isUserLibraryPath(relatedFile) {
+			continue
+		}
+		if err := os.RemoveAll(relatedFile); err == nil {
+			removedFiles++
+		}
+	}
+
+	return removedFiles, spaceFreed, nil
+}
+
+func (s *UninstallService) uninstallBrewCask(app models.Application) error {
+	if _, err := exec.LookPath("brew"); err != nil {
+		return errors.New("Homebrew is not available")
+	}
+
+	cmd := exec.Command("brew", "uninstall", "--cask", "--zap", app.BrewCask)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		message := strings.TrimSpace(string(output))
+		if message == "" {
+			message = err.Error()
+		}
+		return errors.New(message)
+	}
+
+	return nil
+}
+
+func (s *UninstallService) emitProgress(app string, message string, percent int, filesRemoved int, spaceFreed int64) {
+	if s.ctx == nil {
+		return
+	}
+
+	runtime.EventsEmit(s.ctx, "uninstall:progress", models.UninstallProgress{
+		App:          app,
+		Message:      message,
+		Percent:      percent,
+		FilesRemoved: filesRemoved,
+		SpaceFreed:   spaceFreed,
+	})
+}
+
+func matchesApplicationFile(name string, bundleID string, appName string) bool {
+	lowerName := strings.ToLower(name)
+	if strings.Contains(lowerName, strings.ToLower(bundleID)) {
+		return true
+	}
+	if appName == "" {
+		return false
+	}
+	normalizedAppName := strings.ToLower(strings.ReplaceAll(appName, " ", ""))
+	normalizedName := strings.ToLower(strings.ReplaceAll(name, " ", ""))
+	return normalizedAppName != "" && strings.Contains(normalizedName, normalizedAppName)
+}
+
+func isUserLibraryPath(path string) bool {
+	homeLibrary := filepath.Join(os.Getenv("HOME"), "Library")
+	cleanPath := filepath.Clean(path)
+	return cleanPath == homeLibrary || strings.HasPrefix(cleanPath, homeLibrary+string(os.PathSeparator))
+}
+
+func (s *UninstallService) getPathSize(path string) (int64, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return 0, err
+	}
+	if !info.IsDir() {
+		return info.Size(), nil
+	}
+	return s.getDirSize(path)
+}
 
 func (s *UninstallService) getDirSize(path string) (int64, error) {
 	var size int64
@@ -192,14 +376,44 @@ func (s *UninstallService) getDirSize(path string) (int64, error) {
 func (s *UninstallService) getBundleID(appPath string) string {
 	plistPath := filepath.Join(appPath, "Contents", "Info.plist")
 
-	// Use plutil to read bundle ID
 	cmd := exec.Command("plutil", "-extract", "CFBundleIdentifier", "raw", plistPath)
 	output, err := cmd.Output()
 	if err != nil {
-		return "unknown"
+		return unknownBundleID
 	}
 
 	return strings.TrimSpace(string(output))
+}
+
+func (s *UninstallService) detectBrewCask(appPath string) string {
+	resolvedPath, err := filepath.EvalSymlinks(appPath)
+	if err != nil {
+		resolvedPath = appPath
+	}
+	parts := strings.Split(resolvedPath, string(os.PathSeparator))
+	for i, part := range parts {
+		if part == "Caskroom" && i+1 < len(parts) {
+			return parts[i+1]
+		}
+	}
+
+	cmd := exec.Command("brew", "list", "--cask")
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	appName := strings.TrimSuffix(filepath.Base(appPath), ".app")
+	scanner := bufio.NewScanner(strings.NewReader(string(output)))
+	for scanner.Scan() {
+		cask := strings.TrimSpace(scanner.Text())
+		if cask == "" {
+			continue
+		}
+		if strings.EqualFold(cask, appName) || strings.EqualFold(strings.ReplaceAll(cask, "-", " "), appName) {
+			return cask
+		}
+	}
+	return ""
 }
 
 func (s *UninstallService) calculateAge(modTime time.Time) string {

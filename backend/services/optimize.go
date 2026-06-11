@@ -4,15 +4,19 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"mole-wails/backend/models"
 )
+
+const optimizeTaskTimeout = 5 * time.Minute
 
 type optimizeTaskDef struct {
 	action       string
@@ -41,10 +45,40 @@ var optimizeTasks = []optimizeTaskDef{
 		requiresSudo: true,
 	},
 	{
+		action:       "radio_refresh",
+		name:         "Radio Refresh",
+		description:  "Refresh wireless and Bluetooth related services",
+		requiresSudo: true,
+	},
+	{
+		action:       "saved_state_cleanup",
+		name:         "Saved State Cleanup",
+		description:  "Remove stale application saved state data",
+		requiresSudo: false,
+	},
+	{
 		action:       "swap_cleanup",
 		name:         "Virtual Memory Refresh",
 		description:  "Reset swap files and dynamic pager service",
 		requiresSudo: true,
+	},
+	{
+		action:       "startup_cache",
+		name:         "Startup Cache",
+		description:  "Refresh startup and boot caches",
+		requiresSudo: true,
+	},
+	{
+		action:       "local_snapshots",
+		name:         "Local Snapshots",
+		description:  "Prune local Time Machine snapshots",
+		requiresSudo: true,
+	},
+	{
+		action:       "fix_broken_configs",
+		name:         "Broken Configs",
+		description:  "Repair known stale configuration states",
+		requiresSudo: false,
 	},
 	{
 		action:       "network_optimization",
@@ -58,15 +92,45 @@ var optimizeTasks = []optimizeTaskDef{
 		description:  "Optimize user databases with VACUUM to reduce size",
 		requiresSudo: false,
 	},
+	{
+		action:       "cloudshell",
+		name:         "CloudShell Diagnostics",
+		description:  "Report CloudShell or AliEntSafe CPU activity",
+		requiresSudo: false,
+	},
+	{
+		action:       "syspolicyd",
+		name:         "Syspolicyd Diagnostics",
+		description:  "Report syspolicyd verification activity",
+		requiresSudo: false,
+	},
+	{
+		action:       "windowserver",
+		name:         "WindowServer Diagnostics",
+		description:  "Report WindowServer resource activity",
+		requiresSudo: false,
+	},
+	{
+		action:       "spotlight",
+		name:         "Spotlight Diagnostics",
+		description:  "Report Spotlight indexing activity",
+		requiresSudo: false,
+	},
+	{
+		action:       "coresim_disk_images",
+		name:         "CoreSimulator Images",
+		description:  "Report CoreSimulator disk image usage",
+		requiresSudo: false,
+	},
 }
 
 var legacyOptimizeTaskIDs = map[string]string{
-	"rebuild_caches":    "system_maintenance",
-	"reset_network":     "network_optimization",
-	"refresh_ui":        "cache_refresh",
-	"clean_logs":        "maintenance_scripts",
-	"restart_pager":     "swap_cleanup",
-	"rebuild_services":  "system_maintenance",
+	"rebuild_caches":   "system_maintenance",
+	"reset_network":    "network_optimization",
+	"refresh_ui":       "cache_refresh",
+	"clean_logs":       "maintenance_scripts",
+	"restart_pager":    "swap_cleanup",
+	"rebuild_services": "system_maintenance",
 }
 
 type OptimizeService struct {
@@ -138,9 +202,13 @@ func (s *OptimizeService) GetTasks() ([]models.OptimizationTask, error) {
 func (s *OptimizeService) runTask(action string) (string, error) {
 	scriptPath := filepath.Join(s.scriptsPath, "bin", "optimize_task.sh")
 
-	cmd := exec.Command("/bin/bash", scriptPath, action)
+	ctx, cancel := context.WithTimeout(context.Background(), optimizeTaskTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "/bin/bash", scriptPath, action)
 	cmd.Dir = s.scriptsPath
 	cmd.Stdin = nil
+	cmd.Env = append(os.Environ(), "MOLE_WAILS_NONINTERACTIVE=1")
 
 	var output bytes.Buffer
 	cmd.Stdout = &output
@@ -148,6 +216,12 @@ func (s *OptimizeService) runTask(action string) (string, error) {
 
 	if err := cmd.Run(); err != nil {
 		message := strings.TrimSpace(output.String())
+		if ctx.Err() == context.DeadlineExceeded {
+			if message == "" {
+				message = "Task timed out"
+			}
+			return message, fmt.Errorf("%s timed out", action)
+		}
 		if message == "" {
 			message = err.Error()
 		}
@@ -188,18 +262,33 @@ func stripANSI(line string) string {
 	return b.String()
 }
 
-// ExecuteOptimizations runs selected optimization tasks
-func (s *OptimizeService) ExecuteOptimizations(taskIDs []string) error {
+func (s *OptimizeService) PreviewOptimizations(taskIDs []string) (models.DryRunPreview, error) {
 	if len(taskIDs) == 0 {
-		return fmt.Errorf("no optimization tasks selected")
+		return models.DryRunPreview{Entries: []models.DryRunEntry{}}, nil
 	}
+	resolved, resolutionErrors := s.resolveTaskIDs(taskIDs)
+	if len(resolutionErrors) > 0 && len(resolved) == 0 {
+		return models.DryRunPreview{}, errors.New(strings.Join(resolutionErrors, "; "))
+	}
+	entries := make([]models.DryRunEntry, 0, len(resolved))
+	for _, action := range resolved {
+		entries = append(entries, models.DryRunEntry{
+			Action: action,
+			Detail: fmt.Sprintf("Would run %s", s.taskName(action)),
+		})
+	}
+	return models.DryRunPreview{Entries: entries}, nil
+}
 
+func (s *OptimizeService) resolveTaskIDs(taskIDs []string) ([]string, []string) {
 	resolved := make([]string, 0, len(taskIDs))
 	seen := make(map[string]bool)
+	var errors []string
 	for _, taskID := range taskIDs {
 		action, ok := s.resolveTaskID(taskID)
 		if !ok {
-			return fmt.Errorf("unknown optimization task: %s", taskID)
+			errors = append(errors, fmt.Sprintf("unknown optimization task: %s", taskID))
+			continue
 		}
 		if seen[action] {
 			continue
@@ -207,10 +296,34 @@ func (s *OptimizeService) ExecuteOptimizations(taskIDs []string) error {
 		seen[action] = true
 		resolved = append(resolved, action)
 	}
+	return resolved, errors
+}
+
+// ExecuteOptimizations runs selected optimization tasks
+func (s *OptimizeService) ExecuteOptimizations(taskIDs []string, dryRun bool) error {
+	if len(taskIDs) == 0 {
+		return fmt.Errorf("no optimization tasks selected")
+	}
+
+	if dryRun {
+		preview, err := s.PreviewOptimizations(taskIDs)
+		if err != nil {
+			return err
+		}
+		if s.ctx != nil {
+			runtime.EventsEmit(s.ctx, "optimize:complete", models.OptimizeResult{TasksCompleted: len(preview.Entries)})
+		}
+		return nil
+	}
+
+	resolved, resolutionErrors := s.resolveTaskIDs(taskIDs)
+	if len(resolved) == 0 {
+		return errors.New(strings.Join(resolutionErrors, "; "))
+	}
 
 	totalTasks := len(resolved)
 	completed := 0
-	var errors []string
+	errors := append([]string{}, resolutionErrors...)
 
 	s.emitProgress("", "Starting optimization...", 0)
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"runtime"
 
@@ -9,6 +10,13 @@ import (
 	"mole-wails/backend/models"
 	"mole-wails/backend/services"
 	"mole-wails/backend/status"
+)
+
+const (
+	scriptsDirName             = "scripts"
+	scriptsHistoryRelativePath = "bin/history.sh"
+	macOSResourcesScriptsPath  = "../Resources/scripts"
+	installedScriptsPath       = "/Applications/Mole.app/Contents/Resources/scripts"
 )
 
 // App struct
@@ -19,6 +27,9 @@ type App struct {
 	Clean     *services.CleanService
 	Uninstall *services.UninstallService
 	Optimize  *services.OptimizeService
+	Purge     *services.PurgeService
+	Installer *services.InstallerService
+	History   *services.HistoryService
 	Analyze   *analyze.Service
 	Status    *status.Service
 	TouchID   *services.TouchIDService
@@ -33,6 +44,9 @@ func NewApp() *App {
 		Clean:     services.NewCleanService(scriptsPath),
 		Uninstall: services.NewUninstallService(scriptsPath),
 		Optimize:  services.NewOptimizeService(scriptsPath),
+		Purge:     services.NewPurgeService(scriptsPath),
+		Installer: services.NewInstallerService(scriptsPath),
+		History:   services.NewHistoryService(scriptsPath),
 		Analyze:   analyze.NewService(),
 		Status:    status.NewService(),
 		TouchID:   services.NewTouchIDService(scriptsPath),
@@ -47,6 +61,9 @@ func (a *App) startup(ctx context.Context) {
 	a.Clean.SetContext(ctx)
 	a.Uninstall.SetContext(ctx)
 	a.Optimize.SetContext(ctx)
+	a.Purge.SetContext(ctx)
+	a.Installer.SetContext(ctx)
+	a.History.SetContext(ctx)
 	a.Analyze.SetContext(ctx)
 	a.Status.SetContext(ctx)
 	a.TouchID.SetContext(ctx)
@@ -60,14 +77,38 @@ func (a *App) shutdown(ctx context.Context) {
 
 // Helper function to determine scripts path
 func getScriptsPath() string {
-	if runtime.GOOS == "darwin" {
-		scriptsPath, err := filepath.Abs("scripts")
-		if err == nil {
-			return scriptsPath
+	for _, candidate := range scriptsPathCandidates() {
+		if isUsableScriptsPath(candidate) {
+			return candidate
 		}
 	}
 
-	return "/Applications/Mole.app/Contents/Resources/scripts"
+	return installedScriptsPath
+}
+
+func scriptsPathCandidates() []string {
+	candidates := make([]string, 0, 4)
+
+	if workingDirScriptsPath, err := filepath.Abs(scriptsDirName); err == nil {
+		candidates = append(candidates, workingDirScriptsPath)
+	}
+
+	if _, sourceFile, _, ok := runtime.Caller(0); ok {
+		candidates = append(candidates, filepath.Join(filepath.Dir(sourceFile), scriptsDirName))
+	}
+
+	if executablePath, err := os.Executable(); err == nil {
+		executableDir := filepath.Dir(executablePath)
+		candidates = append(candidates, filepath.Clean(filepath.Join(executableDir, macOSResourcesScriptsPath)))
+	}
+
+	candidates = append(candidates, installedScriptsPath)
+	return candidates
+}
+
+func isUsableScriptsPath(scriptsPath string) bool {
+	info, err := os.Stat(filepath.Join(scriptsPath, scriptsHistoryRelativePath))
+	return err == nil && !info.IsDir()
 }
 
 // ===========================
@@ -99,11 +140,19 @@ func (a *App) UninstallScanApps(forceRescan bool) ([]models.Application, error) 
 }
 
 func (a *App) UninstallApps(bundleIDs []string) error {
-	return a.Uninstall.UninstallApps(bundleIDs)
+	return a.Uninstall.UninstallApps(bundleIDs, false)
+}
+
+func (a *App) UninstallAppsWithDryRun(bundleIDs []string, dryRun bool) error {
+	return a.Uninstall.UninstallApps(bundleIDs, dryRun)
 }
 
 func (a *App) UninstallGetRelatedFiles(bundleID string) ([]string, error) {
 	return a.Uninstall.GetRelatedFiles(bundleID)
+}
+
+func (a *App) UninstallPreview(bundleIDs []string) (models.DryRunPreview, error) {
+	return a.Uninstall.PreviewUninstall(bundleIDs)
 }
 
 // ===========================
@@ -115,7 +164,15 @@ func (a *App) OptimizeGetTasks() ([]models.OptimizationTask, error) {
 }
 
 func (a *App) OptimizeExecute(taskIDs []string) error {
-	return a.Optimize.ExecuteOptimizations(taskIDs)
+	return a.Optimize.ExecuteOptimizations(taskIDs, false)
+}
+
+func (a *App) OptimizeExecuteWithDryRun(taskIDs []string, dryRun bool) error {
+	return a.Optimize.ExecuteOptimizations(taskIDs, dryRun)
+}
+
+func (a *App) OptimizePreview(taskIDs []string) (models.DryRunPreview, error) {
+	return a.Optimize.PreviewOptimizations(taskIDs)
 }
 
 func (a *App) OptimizeGetWhitelist() ([]string, error) {
@@ -150,6 +207,14 @@ func (a *App) AnalyzePickDirectory(defaultPath string) (string, error) {
 	return a.Analyze.PickDirectory(defaultPath)
 }
 
+func (a *App) AnalyzeListExternalVolumes() ([]models.ExternalVolume, error) {
+	return a.Analyze.ListExternalVolumes()
+}
+
+func (a *App) AnalyzeScanExternalVolume(path string) (*models.ScanResult, error) {
+	return a.Analyze.ScanExternalVolume(path)
+}
+
 // ===========================
 // Status Service Methods
 // ===========================
@@ -166,6 +231,14 @@ func (a *App) StatusStopMonitoring() {
 	a.Status.StopMonitoring()
 }
 
+func (a *App) StatusGetProcessWatchConfig() models.ProcessWatchConfig {
+	return a.Status.GetProcessWatchConfig()
+}
+
+func (a *App) StatusSetProcessWatchConfig(config models.ProcessWatchConfig) error {
+	return a.Status.SetProcessWatchConfig(config)
+}
+
 // ===========================
 // TouchID Service Methods
 // ===========================
@@ -175,9 +248,61 @@ func (a *App) TouchIDGetStatus() (*models.TouchIDStatus, error) {
 }
 
 func (a *App) TouchIDEnable() error {
-	return a.TouchID.Enable()
+	return a.TouchID.Enable(false)
+}
+
+func (a *App) TouchIDEnableWithDryRun(dryRun bool) error {
+	return a.TouchID.Enable(dryRun)
 }
 
 func (a *App) TouchIDDisable() error {
-	return a.TouchID.Disable()
+	return a.TouchID.Disable(false)
+}
+
+func (a *App) TouchIDDisableWithDryRun(dryRun bool) error {
+	return a.TouchID.Disable(dryRun)
+}
+
+func (a *App) TouchIDPreview(action string) (models.DryRunPreview, error) {
+	return a.TouchID.Preview(action)
+}
+
+// ===========================
+// Purge Service Methods
+// ===========================
+
+func (a *App) PurgeScan() (models.PurgeScanResult, error) {
+	return a.Purge.ScanTargets()
+}
+
+func (a *App) PurgeExecute(paths []string) (models.PurgeResult, error) {
+	return a.Purge.ExecutePurge(paths)
+}
+
+func (a *App) PurgeGetPaths() ([]string, error) {
+	return a.Purge.GetPaths()
+}
+
+func (a *App) PurgeUpdatePaths(paths []string) error {
+	return a.Purge.UpdatePaths(paths)
+}
+
+// ===========================
+// Installer Service Methods
+// ===========================
+
+func (a *App) InstallerScan() (models.InstallerScanResult, error) {
+	return a.Installer.ScanInstallers()
+}
+
+func (a *App) InstallerRemove(paths []string) (models.InstallerResult, error) {
+	return a.Installer.RemoveInstallers(paths)
+}
+
+// ===========================
+// History Service Methods
+// ===========================
+
+func (a *App) HistoryGet(limit int) (models.HistoryResult, error) {
+	return a.History.GetHistory(limit)
 }

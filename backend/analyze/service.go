@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -108,6 +109,50 @@ func (s *Service) ScanDirectory(path string) (*models.ScanResult, error) {
 	modelResult := s.convertToModelScanResult(result)
 	modelResult.Path = path
 	return modelResult, nil
+}
+
+func (s *Service) ListExternalVolumes() ([]models.ExternalVolume, error) {
+	entries, err := os.ReadDir("/Volumes")
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []models.ExternalVolume{}, nil
+		}
+		return nil, fmt.Errorf("failed to list external volumes: %w", err)
+	}
+
+	volumes := make([]models.ExternalVolume, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		path := filepath.Join("/Volumes", entry.Name())
+		if err := validateExternalVolumeTarget(path); err != nil {
+			continue
+		}
+		volumes = append(volumes, models.ExternalVolume{
+			Name:      entry.Name(),
+			Path:      path,
+			Available: true,
+		})
+	}
+	sort.Slice(volumes, func(i, j int) bool {
+		return volumes[i].Name < volumes[j].Name
+	})
+	return volumes, nil
+}
+
+func (s *Service) ScanExternalVolume(path string) (*models.ScanResult, error) {
+	if err := validateExternalVolumeTarget(path); err != nil {
+		return nil, err
+	}
+	result, err := s.ScanDirectory(path)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateExternalVolumeTarget(path); err != nil {
+		return nil, fmt.Errorf("external volume is no longer available: %s", path)
+	}
+	return result, nil
 }
 
 // GetLargeFiles returns the largest files in a directory
@@ -265,6 +310,32 @@ func validatePathForDeletion(path string) error {
 		return fmt.Errorf("path must be absolute: %s", path)
 	}
 
+	return nil
+}
+
+func validateExternalVolumeTarget(path string) error {
+	cleanPath := filepath.Clean(path)
+	if cleanPath == "/Volumes" || !strings.HasPrefix(cleanPath, "/Volumes/") {
+		return fmt.Errorf("path is not a valid mounted external volume: %s", path)
+	}
+
+	rel, err := filepath.Rel("/Volumes", cleanPath)
+	if err != nil || strings.HasPrefix(rel, "..") || rel == "." {
+		return fmt.Errorf("path is not a valid mounted external volume: %s", path)
+	}
+
+	parts := strings.Split(rel, string(os.PathSeparator))
+	if len(parts) == 0 || parts[0] == "" {
+		return fmt.Errorf("path is not a valid mounted external volume: %s", path)
+	}
+	volumeRoot := filepath.Join("/Volumes", parts[0])
+	info, err := os.Stat(volumeRoot)
+	if err != nil || !info.IsDir() {
+		return fmt.Errorf("path is not a valid mounted external volume: %s", path)
+	}
+	if _, err := os.Stat(cleanPath); err != nil {
+		return fmt.Errorf("path is not a valid mounted external volume: %s", path)
+	}
 	return nil
 }
 

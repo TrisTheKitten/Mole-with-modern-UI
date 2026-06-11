@@ -8,6 +8,9 @@ const props = defineProps({
 
 const iconMap = {
   clean: 'pi-eraser',
+  purge: 'pi-folder-minus',
+  installer: 'pi-box',
+  history: 'pi-history',
   uninstall: 'pi-trash',
   optimize: 'pi-bolt',
   analyze: 'pi-chart-bar',

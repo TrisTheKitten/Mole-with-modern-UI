@@ -9,6 +9,7 @@ export namespace models {
 	    lastModified: any;
 	    age: string;
 	    icon?: string;
+	    brewCask?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Application(source);
@@ -23,6 +24,7 @@ export namespace models {
 	        this.lastModified = this.convertValues(source["lastModified"], null);
 	        this.age = source["age"];
 	        this.icon = source["icon"];
+	        this.brewCask = source["brewCask"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -91,6 +93,8 @@ export namespace models {
 	    description: string;
 	    enabled: boolean;
 	    estimatedMB: number;
+	    estimatedBytes: number;
+	    requiresSudo: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new CleanCategory(source);
@@ -103,6 +107,8 @@ export namespace models {
 	        this.description = source["description"];
 	        this.enabled = source["enabled"];
 	        this.estimatedMB = source["estimatedMB"];
+	        this.estimatedBytes = source["estimatedBytes"];
+	        this.requiresSudo = source["requiresSudo"];
 	    }
 	}
 	export class DirEntry {
@@ -172,6 +178,68 @@ export namespace models {
 	        this.writeSpeed = source["writeSpeed"];
 	    }
 	}
+	export class DryRunEntry {
+	    action: string;
+	    path?: string;
+	    detail: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DryRunEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.action = source["action"];
+	        this.path = source["path"];
+	        this.detail = source["detail"];
+	    }
+	}
+	export class DryRunPreview {
+	    entries: DryRunEntry[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DryRunPreview(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.entries = this.convertValues(source["entries"], DryRunEntry);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ExternalVolume {
+	    name: string;
+	    path: string;
+	    available: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ExternalVolume(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.path = source["path"];
+	        this.available = source["available"];
+	    }
+	}
 	export class FileEntry {
 	    name: string;
 	    path: string;
@@ -226,6 +294,232 @@ export namespace models {
 	        this.uptime = source["uptime"];
 	    }
 	}
+	export class HistoryActionCounts {
+	    removed: number;
+	    trashed: number;
+	    skipped: number;
+	    failed: number;
+	    rebuilt: number;
+	    other: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new HistoryActionCounts(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.removed = source["removed"];
+	        this.trashed = source["trashed"];
+	        this.skipped = source["skipped"];
+	        this.failed = source["failed"];
+	        this.rebuilt = source["rebuilt"];
+	        this.other = source["other"];
+	    }
+	}
+	export class HistoryDeletion {
+	    timestamp: string;
+	    mode: string;
+	    status: string;
+	    sizeKb?: number;
+	    path: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new HistoryDeletion(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.timestamp = source["timestamp"];
+	        this.mode = source["mode"];
+	        this.status = source["status"];
+	        this.sizeKb = source["sizeKb"];
+	        this.path = source["path"];
+	    }
+	}
+	export class HistoryLogs {
+	    operations: string;
+	    deletions: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new HistoryLogs(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.operations = source["operations"];
+	        this.deletions = source["deletions"];
+	    }
+	}
+	export class HistorySession {
+	    command: string;
+	    startedAt: string;
+	    endedAt: string;
+	    items: number;
+	    size: string;
+	    operationCount: number;
+	    actions: HistoryActionCounts;
+	
+	    static createFrom(source: any = {}) {
+	        return new HistorySession(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.command = source["command"];
+	        this.startedAt = source["startedAt"];
+	        this.endedAt = source["endedAt"];
+	        this.items = source["items"];
+	        this.size = source["size"];
+	        this.operationCount = source["operationCount"];
+	        this.actions = this.convertValues(source["actions"], HistoryActionCounts);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class HistoryResult {
+	    logs: HistoryLogs;
+	    limit: number;
+	    sessions: HistorySession[];
+	    deletions: HistoryDeletion[];
+	
+	    static createFrom(source: any = {}) {
+	        return new HistoryResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.logs = this.convertValues(source["logs"], HistoryLogs);
+	        this.limit = source["limit"];
+	        this.sessions = this.convertValues(source["sessions"], HistorySession);
+	        this.deletions = this.convertValues(source["deletions"], HistoryDeletion);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class InstallerFile {
+	    path: string;
+	    size: number;
+	    // Go type: time
+	    lastModified: any;
+	    source: string;
+	    selected: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new InstallerFile(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.size = source["size"];
+	        this.lastModified = this.convertValues(source["lastModified"], null);
+	        this.source = source["source"];
+	        this.selected = source["selected"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class InstallerResult {
+	    spaceFreed: number;
+	    removedCount: number;
+	    errors: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new InstallerResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.spaceFreed = source["spaceFreed"];
+	        this.removedCount = source["removedCount"];
+	        this.errors = source["errors"];
+	    }
+	}
+	export class InstallerScanResult {
+	    files: InstallerFile[];
+	    errors: string[];
+	    totalSize: number;
+	    fileCount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new InstallerScanResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.files = this.convertValues(source["files"], InstallerFile);
+	        this.errors = source["errors"];
+	        this.totalSize = source["totalSize"];
+	        this.fileCount = source["fileCount"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class MemoryMetrics {
 	    used: number;
 	    total: number;
@@ -246,9 +540,56 @@ export namespace models {
 	        this.percent = source["percent"];
 	    }
 	}
+	export class ProcessAlert {
+	    pid: number;
+	    name: string;
+	    command: string;
+	    cpuPercent: number;
+	    threshold: number;
+	    windowSeconds: number;
+	    // Go type: time
+	    triggeredAt: any;
+	    status: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProcessAlert(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.pid = source["pid"];
+	        this.name = source["name"];
+	        this.command = source["command"];
+	        this.cpuPercent = source["cpuPercent"];
+	        this.threshold = source["threshold"];
+	        this.windowSeconds = source["windowSeconds"];
+	        this.triggeredAt = this.convertValues(source["triggeredAt"], null);
+	        this.status = source["status"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class ProcessInfo {
 	    name: string;
 	    pid: number;
+	    ppid: number;
+	    command: string;
 	    cpuPercent: number;
 	    memoryMB: number;
 	
@@ -260,6 +601,8 @@ export namespace models {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
 	        this.pid = source["pid"];
+	        this.ppid = source["ppid"];
+	        this.command = source["command"];
 	        this.cpuPercent = source["cpuPercent"];
 	        this.memoryMB = source["memoryMB"];
 	    }
@@ -296,6 +639,7 @@ export namespace models {
 	    network: NetworkMetrics;
 	    battery: BatteryMetrics;
 	    processes: ProcessInfo[];
+	    processAlerts: ProcessAlert[];
 	    // Go type: time
 	    timestamp: any;
 	
@@ -314,6 +658,7 @@ export namespace models {
 	        this.network = this.convertValues(source["network"], NetworkMetrics);
 	        this.battery = this.convertValues(source["battery"], BatteryMetrics);
 	        this.processes = this.convertValues(source["processes"], ProcessInfo);
+	        this.processAlerts = this.convertValues(source["processAlerts"], ProcessAlert);
 	        this.timestamp = this.convertValues(source["timestamp"], null);
 	    }
 	
@@ -357,6 +702,99 @@ export namespace models {
 	    }
 	}
 	
+	
+	export class ProcessWatchConfig {
+	    threshold: number;
+	    windowSeconds: number;
+	    enabled: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProcessWatchConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.threshold = source["threshold"];
+	        this.windowSeconds = source["windowSeconds"];
+	        this.enabled = source["enabled"];
+	    }
+	}
+	export class PurgeArtifact {
+	    path: string;
+	    type: string;
+	    size: number;
+	    ageDays: number;
+	    selected: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new PurgeArtifact(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.type = source["type"];
+	        this.size = source["size"];
+	        this.ageDays = source["ageDays"];
+	        this.selected = source["selected"];
+	    }
+	}
+	export class PurgeResult {
+	    spaceFreed: number;
+	    removedCount: number;
+	    errors: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new PurgeResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.spaceFreed = source["spaceFreed"];
+	        this.removedCount = source["removedCount"];
+	        this.errors = source["errors"];
+	    }
+	}
+	export class PurgeScanResult {
+	    artifacts: PurgeArtifact[];
+	    errors: string[];
+	    totalSize: number;
+	    artifactCount: number;
+	    configuredPaths: string[];
+	    missingPaths: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new PurgeScanResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.artifacts = this.convertValues(source["artifacts"], PurgeArtifact);
+	        this.errors = source["errors"];
+	        this.totalSize = source["totalSize"];
+	        this.artifactCount = source["artifactCount"];
+	        this.configuredPaths = source["configuredPaths"];
+	        this.missingPaths = source["missingPaths"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class ScanResult {
 	    entries: DirEntry[];
 	    largeFiles: FileEntry[];
