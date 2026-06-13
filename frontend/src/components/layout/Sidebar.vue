@@ -1,5 +1,6 @@
 <script setup>
 import NavIcon from './NavIcon.vue'
+import { getFooterNavTabs, getMainNavTabs } from '../../config/appFeatures'
 
 defineProps({
   activeTab: String,
@@ -7,23 +8,8 @@ defineProps({
 
 const emit = defineEmits(['change-tab'])
 
-const PURGE_TAB_ID = 'purge'
-const TOUCH_ID_TAB_ID = 'touchid'
-
-const mainTabs = [
-  { id: 'clean', icon: 'clean', label: 'Clean' },
-  { id: 'optimize', icon: 'optimize', label: 'Optimize' },
-  { id: 'installer', icon: 'installer', label: 'Installer Cleanup' },
-  { id: 'uninstall', icon: 'uninstall', label: 'Uninstall' },
-  { id: 'history', icon: 'history', label: 'History' },
-  { id: PURGE_TAB_ID, icon: 'purge', label: 'Purge', disabled: true, badge: 'Soon' },
-  { id: TOUCH_ID_TAB_ID, icon: 'touchid', label: 'TouchID', disabled: true, badge: 'Soon' },
-]
-
-const footerTabs = [
-  { id: 'analyze', icon: 'analyze', label: 'Analyze' },
-  { id: 'status', icon: 'status', label: 'Status' },
-]
+const mainTabs = getMainNavTabs()
+const footerTabs = getFooterNavTabs()
 
 function changeTab(tab) {
   if (tab.disabled) {

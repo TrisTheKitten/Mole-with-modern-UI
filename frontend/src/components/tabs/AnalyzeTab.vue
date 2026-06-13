@@ -22,6 +22,8 @@ import LoadingPanel from '../shared/LoadingPanel.vue'
 import EmptyState from '../shared/EmptyState.vue'
 import InfoRow from '../shared/InfoRow.vue'
 
+const LARGE_FILE_LIMIT = 20
+
 const scanPath = ref('')
 const scanning = ref(false)
 const scanProgress = ref('')
@@ -71,15 +73,38 @@ function formatBytes(bytes) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
-async function loadResults() {
-  const result = await AnalyzeScanDirectory(scanPath.value)
+async function fetchLargeFiles(path) {
+  const files = await AnalyzeGetLargeFiles(path, LARGE_FILE_LIMIT)
+  return (files || []).map((file) => ({ ...file, selected: false }))
+}
+
+async function applyScanResult(path, result) {
   if (!result) {
     throw new Error('Scan returned no results')
   }
 
+  scanPath.value = path
   scanResult.value = result
-  const files = await AnalyzeGetLargeFiles(scanPath.value, 20)
-  largeFiles.value = (files || []).map((file) => ({ ...file, selected: false }))
+  largeFiles.value = await fetchLargeFiles(path)
+}
+
+async function runScan(fetchResult, path, errorContext) {
+  try {
+    const result = await fetchResult()
+    await applyScanResult(path, result)
+    return true
+  } catch (error) {
+    handleError(error, errorContext)
+    return false
+  }
+}
+
+async function scanDirectoryAndLoadFiles() {
+  return runScan(
+    () => AnalyzeScanDirectory(scanPath.value),
+    scanPath.value,
+    'Disk Analysis',
+  )
 }
 
 async function scan() {
@@ -94,15 +119,13 @@ async function scan() {
   scanResult.value = null
   largeFiles.value = []
 
-  try {
-    await loadResults()
-    scanProgress.value = ''
-  } catch (error) {
-    handleError(error, 'Disk Analysis')
+  const success = await scanDirectoryAndLoadFiles()
+  if (!success) {
     scanResult.value = null
-  } finally {
-    scanning.value = false
   }
+
+  scanProgress.value = ''
+  scanning.value = false
 }
 
 async function loadExternalVolumes() {
@@ -122,21 +145,21 @@ async function scanExternalVolume() {
     showExternalEmpty.value = true
     return
   }
+
   const target = selectedExternalVolume.value || externalVolumes.value[0].path
   scanning.value = true
   scanProgress.value = 'Scanning external volume'
-  try {
-    const result = await AnalyzeScanExternalVolume(target)
-    scanPath.value = target
-    scanResult.value = result
-    const files = await AnalyzeGetLargeFiles(target, 20)
-    largeFiles.value = (files || []).map((file) => ({ ...file, selected: false }))
+
+  const success = await runScan(
+    () => AnalyzeScanExternalVolume(target),
+    target,
+    'External Volume',
+  )
+  if (success) {
     showExternalEmpty.value = false
-  } catch (error) {
-    handleError(error, 'External Volume')
-  } finally {
-    scanning.value = false
   }
+
+  scanning.value = false
 }
 
 function requestDelete(paths) {
@@ -173,7 +196,7 @@ async function confirmDelete() {
     }
 
     largeFiles.value = largeFiles.value.filter((file) => !targetSet.has(file.path))
-    await loadResults()
+    await scanDirectoryAndLoadFiles()
 
     const message = targets.length === 1 ? 'Item deleted' : `${targets.length} items deleted`
     window.dispatchEvent(new CustomEvent('show-toast', {
@@ -181,11 +204,7 @@ async function confirmDelete() {
     }))
   } catch (error) {
     handleError(error, 'Delete')
-    try {
-      await loadResults()
-    } catch (refreshError) {
-      handleError(refreshError, 'Disk Analysis')
-    }
+    await scanDirectoryAndLoadFiles()
   } finally {
     loading.value = false
     deleteTargets.value = []

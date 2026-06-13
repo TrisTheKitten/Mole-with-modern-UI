@@ -8,7 +8,7 @@ A native macOS app for cleaning, optimizing, and monitoring your Mac. MoleUI wra
 
 If you want the native Mac experience that tw93 ships and maintains, use **[Mole for Mac](https://mole.fit)** — the official paid GUI. Buying it directly supports his work on Mole and helps keep the free CLI moving forward. We recommend it over this project when you can.
 
-Because MoleUI is maintained separately, it can fall behind the official CLI and app on features, fixes, and polish. Some capabilities may be incomplete or arrive later (for example, Purge and Touch ID are still pending here). Use this repo if you specifically want a free, open-source desktop UI — not as a drop-in replacement for the official product.
+Because MoleUI is maintained separately, it can fall behind the official CLI and app on features, fixes, and polish. Some capabilities may be incomplete or arrive later (for example, History, Purge, and Touch ID are still pending here). Use this repo if you specifically want a free, open-source desktop UI — not as a drop-in replacement for the official product.
 
 ## What you can do
 
@@ -16,7 +16,7 @@ Because MoleUI is maintained separately, it can fall behind the official CLI and
 - **Optimize** — Run maintenance tasks that rebuild caches and refresh system services
 - **Installer Cleanup** — Find and remove leftover installer downloads (`.dmg`, `.pkg`, `.zip`, and more)
 - **Uninstall** — Remove apps and their leftover files, with dry-run preview
-- **History** — Review past Mole sessions, deletions, and operation logs
+- **History** — Review past Mole sessions, deletions, and operation logs *(coming soon)*
 - **Analyze** — Browse disk usage by folder, scan external volumes, and spot large files
 - **Status** — Watch CPU, memory, disk, GPU, network, battery, and system health in real time
 - **Purge** — Remove stale build artifacts from dev folders *(coming soon)*
@@ -116,7 +116,7 @@ mole-wails/
 | Optimize | Maintenance tasks with dry-run preview and task whitelist |
 | Installer Cleanup | Scan and remove leftover installer files from common download locations |
 | Uninstall | Remove apps and associated files with dry-run preview |
-| History | Past sessions, deletions, and operation logs |
+| History | Backend ready; UI coming soon |
 | Analyze | Folder breakdown, large-file detection, external volume scanning, Finder integration |
 | Status | Live CPU, memory, disk, GPU, network, battery, health score, and process alerts |
 | Purge | Backend ready; UI coming soon |

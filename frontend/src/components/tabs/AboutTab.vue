@@ -2,6 +2,7 @@
 import PageHeader from '../shared/PageHeader.vue'
 import InfoRow from '../shared/InfoRow.vue'
 import githubIcon from '../../assets/icons/github.svg'
+import { getAboutFeatures } from '../../config/appFeatures'
 
 const appInfo = {
   name: 'MoleUI - Deep Clean & Optimize',
@@ -9,16 +10,7 @@ const appInfo = {
   description: 'Visual interface for the Mole CLI - Advanced macOS system maintenance and optimization tool',
 }
 
-const features = [
-  { icon: 'pi-eraser', title: 'System Cleanup', description: 'Remove caches, logs, and temporary files' },
-  { icon: 'pi-box', title: 'Installer Cleanup', description: 'Find and remove leftover installer downloads' },
-  { icon: 'pi-history', title: 'Operation History', description: 'Review past cleanup and maintenance sessions' },
-  { icon: 'pi-trash', title: 'App Uninstaller', description: 'Remove apps and all associated files' },
-  { icon: 'pi-bolt', title: 'System Optimization', description: 'Rebuild caches and refresh system services' },
-  { icon: 'pi-chart-bar', title: 'Disk Space Analysis', description: 'Visualize usage and find large files' },
-  { icon: 'pi-chart-line', title: 'System Monitoring', description: 'Real-time CPU, memory, disk, and network metrics' },
-  { icon: 'pi-lock', title: 'Touch ID Setup', description: 'Configure Touch ID for sudo commands' },
-]
+const features = getAboutFeatures()
 
 const moleCLI = {
   version: 'v1.42.0',
