@@ -2,7 +2,7 @@
 
 A native macOS app for cleaning, optimizing, and monitoring your Mac. MoleUI wraps the [Mole CLI](https://github.com/tw93/Mole) (v1.42.0 Otter) in a graphical interface so you can run system maintenance without the terminal.
 
-## Disclaimer
+## Disclaimer !
 
 **MoleUI is not affiliated with, endorsed by, or maintained by [tw93](https://github.com/tw93)** — the author of [Mole](https://github.com/tw93/Mole). This is an independent, community-driven GUI built on top of the open-source Mole CLI. It is not the official Mole app.
 
