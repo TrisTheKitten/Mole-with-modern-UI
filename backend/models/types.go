@@ -45,6 +45,8 @@ type Application struct {
 
 type UninstallProgress struct {
 	App          string `json:"app"`
+	Step         string `json:"step,omitempty"`
+	Status       string `json:"status,omitempty"`
 	Message      string `json:"message"`
 	Percent      int    `json:"percent"`
 	FilesRemoved int    `json:"filesRemoved"`

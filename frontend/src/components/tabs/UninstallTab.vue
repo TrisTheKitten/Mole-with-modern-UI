@@ -10,8 +10,7 @@ import AppButton from '../shared/AppButton.vue'
 import ConfirmDialog from '../shared/ConfirmDialog.vue'
 import TextField from '../shared/TextField.vue'
 import LoadingPanel from '../shared/LoadingPanel.vue'
-import ProgressPanel from '../shared/ProgressPanel.vue'
-import ResultPanel from '../shared/ResultPanel.vue'
+import UninstallTimeline from '../uninstall/UninstallTimeline.vue'
 
 const BYTES_PER_MEGABYTE = 1024 * 1024
 const BYTES_PER_GIGABYTE = 1024 * BYTES_PER_MEGABYTE
@@ -40,9 +39,9 @@ const sizeFilters = [
 
 const apps = ref([])
 const loading = ref(false)
-const uninstalling = ref(false)
-const progress = ref(0)
-const progressMessage = ref('')
+const phase = ref('idle')
+const percent = ref(0)
+const stepGroups = ref([])
 const searchQuery = ref('')
 const sourceFilter = ref('all')
 const ageFilter = ref('all')
@@ -51,7 +50,7 @@ const showRelatedFiles = ref(false)
 const relatedFiles = ref([])
 const selectedApp = ref(null)
 const showConfirmDialog = ref(false)
-const result = ref(null)
+const summary = ref(null)
 const dryRun = ref(false)
 const preview = ref(null)
 
@@ -79,34 +78,74 @@ const relatedFilesMessage = computed(() => {
   return relatedFiles.value.join('\n')
 })
 
-const resultTitle = computed(() => {
-  if (!result.value?.errors?.length) return 'Uninstall Complete'
-  return 'Uninstall Incomplete'
-})
+const STEP_LABELS = {
+  locate: 'Find files',
+  remove: 'Remove app',
+  cleanup: 'Clean up',
+}
 
-const resultDetail = computed(() => {
-  if (!result.value) return ''
-  const details = [
-    `Removed ${result.value.appsRemoved} apps`,
-    `${formatSize(result.value.spaceFreed)} freed`,
-  ]
-  if (result.value.errors?.length) {
-    details.push(result.value.errors.join(' · '))
+function upsertStep(appName, stepId, status, detail) {
+  if (!appName || !stepId) return
+  let group = stepGroups.value.find((item) => item.app === appName)
+  if (!group) {
+    stepGroups.value.push({ app: appName, state: 'working', steps: [] })
+    group = stepGroups.value[stepGroups.value.length - 1]
   }
-  return details.join(' · ')
-})
+  let step = group.steps.find((item) => item.id === stepId)
+  if (!step) {
+    group.steps.push({ id: stepId, label: STEP_LABELS[stepId] || stepId, detail: '', status: 'pending' })
+    step = group.steps[group.steps.length - 1]
+  }
+  step.status = status
+  step.detail = detail
+  group.state = computeGroupState(group)
+}
+
+function computeGroupState(group) {
+  if (group.steps.some((step) => step.status === 'failed')) return 'failed'
+  const cleanup = group.steps.find((step) => step.id === 'cleanup')
+  if (cleanup && cleanup.status === 'success') return 'done'
+  return 'working'
+}
+
+function summarize({ appsRemoved, failedCount, spaceFreed }) {
+  if (appsRemoved === 0) {
+    return {
+      tone: 'failed',
+      title: 'Couldn’t uninstall',
+      detail: 'Nothing was removed — check the steps above',
+    }
+  }
+  const detail = [`Removed ${appsRemoved} ${appsRemoved === 1 ? 'app' : 'apps'}`]
+  if (failedCount > 0) detail.push(`${failedCount} failed`)
+  if (spaceFreed > 0) detail.push(`${formatSize(spaceFreed)} freed`)
+  return {
+    tone: failedCount > 0 ? 'partial' : 'success',
+    title: failedCount > 0 ? 'Finished with issues' : 'All clean',
+    detail: detail.join(' · '),
+  }
+}
 
 onMounted(async () => {
   await scanApps(false)
 
   EventsOn('uninstall:progress', (data) => {
-    progress.value = data.percent
-    progressMessage.value = data.message
+    if (phase.value !== 'running') return
+    if (typeof data.percent === 'number') percent.value = data.percent
+    if (data.step && data.status) {
+      upsertStep(data.app, data.step, data.status, data.message)
+    }
   })
 
   EventsOn('uninstall:complete', (data) => {
-    uninstalling.value = false
-    result.value = data
+    if (phase.value !== 'running') return
+    percent.value = 100
+    summary.value = summarize({
+      appsRemoved: data.appsRemoved || 0,
+      failedCount: data.errors?.length || 0,
+      spaceFreed: data.spaceFreed || 0,
+    })
+    phase.value = 'done'
   })
 })
 
@@ -146,25 +185,42 @@ function requestUninstall() {
 }
 
 async function uninstall() {
-  uninstalling.value = true
-  progress.value = 0
-  progressMessage.value = ''
-  result.value = null
   const appIdentifiers = selectedApps.value.map((app) => getAppIdentifier(app))
 
-  try {
-    if (dryRun.value) {
+  if (dryRun.value) {
+    try {
       preview.value = await UninstallPreview(appIdentifiers)
-      result.value = null
-      uninstalling.value = false
-    } else {
-      await UninstallApps(appIdentifiers)
-      preview.value = null
+    } catch (error) {
+      handleError(error, 'Uninstall')
     }
-  } catch (error) {
-    handleError(error, 'Uninstall')
-    uninstalling.value = false
+    return
   }
+
+  preview.value = null
+  stepGroups.value = []
+  summary.value = null
+  percent.value = 0
+  phase.value = 'running'
+
+  try {
+    await UninstallApps(appIdentifiers)
+  } catch (error) {
+    handleUninstallFailure(error)
+  }
+}
+
+function handleUninstallFailure(error) {
+  if (phase.value === 'done') return
+  if (stepGroups.value.length === 0) {
+    phase.value = 'idle'
+    handleError(error, 'Uninstall')
+    return
+  }
+  const removed = stepGroups.value.filter((group) => group.state === 'done').length
+  const failed = stepGroups.value.filter((group) => group.state === 'failed').length
+  percent.value = 100
+  summary.value = summarize({ appsRemoved: removed, failedCount: failed, spaceFreed: 0 })
+  phase.value = 'done'
 }
 
 function toggleApp(app) {
@@ -180,7 +236,10 @@ function formatSize(bytes) {
 }
 
 async function handleResultDone() {
-  result.value = null
+  phase.value = 'idle'
+  stepGroups.value = []
+  summary.value = null
+  percent.value = 0
   await scanApps(true)
 }
 
@@ -256,17 +315,13 @@ function clearFilters() {
 
     <LoadingPanel v-if="loading" message="Scanning apps" />
 
-    <ProgressPanel
-      v-else-if="uninstalling"
-      :progress="progress"
-      :message="progressMessage"
-    />
-
-    <ResultPanel
-      v-else-if="result"
-      :title="resultTitle"
-      :detail="resultDetail"
-      @action="handleResultDone"
+    <UninstallTimeline
+      v-else-if="phase !== 'idle'"
+      :groups="stepGroups"
+      :percent="percent"
+      :phase="phase"
+      :summary="summary"
+      @done="handleResultDone"
     />
 
     <div v-else class="uninstall-content">

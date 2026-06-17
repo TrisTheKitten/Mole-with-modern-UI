@@ -17,6 +17,23 @@ import (
 
 const unknownBundleID = "unknown"
 
+const (
+	stepLocate  = "locate"
+	stepRemove  = "remove"
+	stepCleanup = "cleanup"
+
+	stepStatusRunning = "running"
+	stepStatusSuccess = "success"
+	stepStatusFailed  = "failed"
+
+	uninstallStepsPerApp = 3
+)
+
+// uninstallStepReporter surfaces a single uninstall step transition to the
+// frontend. It is supplied by the orchestration loop so uninstallApplication
+// stays focused on the file work while emission/percent logic lives in one place.
+type uninstallStepReporter func(step, status, message string)
+
 type UninstallService struct {
 	scriptsPath string
 	ctx         context.Context
@@ -101,13 +118,22 @@ func (s *UninstallService) UninstallApps(appIdentifiers []string, dryRun bool) e
 	}
 
 	result := models.UninstallResult{}
-	progressPercent := 0
+	totalSteps := len(apps) * uninstallStepsPerApp
+	completedSteps := 0
 
-	for i, app := range apps {
-		progressPercent = (i * 100) / len(apps)
-		s.emitProgress(app.Name, "Uninstalling "+app.Name, progressPercent, result.FilesRemoved, result.SpaceFreed)
+	for _, app := range apps {
+		report := func(step, status, message string) {
+			if status != stepStatusRunning {
+				completedSteps++
+			}
+			percent := 0
+			if totalSteps > 0 {
+				percent = (completedSteps * 100) / totalSteps
+			}
+			s.emitStep(app.Name, step, status, message, percent, result.FilesRemoved, result.SpaceFreed)
+		}
 
-		removedFiles, freedBytes, err := s.uninstallApplication(app)
+		removedFiles, freedBytes, err := s.uninstallApplication(app, report)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("%s: %s", app.Name, err.Error()))
 			continue
@@ -116,19 +142,10 @@ func (s *UninstallService) UninstallApps(appIdentifiers []string, dryRun bool) e
 		result.AppsRemoved++
 		result.FilesRemoved += removedFiles
 		result.SpaceFreed += freedBytes
-		progressPercent = ((i + 1) * 100) / len(apps)
-		s.emitProgress(app.Name, "Removed "+app.Name, progressPercent, result.FilesRemoved, result.SpaceFreed)
-	}
-
-	if result.AppsRemoved == 0 {
-		if len(result.Errors) == 0 {
-			return errors.New("no applications were uninstalled")
-		}
-		return fmt.Errorf("uninstall failed: %s", strings.Join(result.Errors, "; "))
 	}
 
 	if s.ctx != nil {
-		s.emitProgress("", "Uninstall finished", 100, result.FilesRemoved, result.SpaceFreed)
+		s.emitProgress("", "Finished", 100, result.FilesRemoved, result.SpaceFreed)
 		runtime.EventsEmit(s.ctx, "uninstall:complete", result)
 	}
 
@@ -247,18 +264,24 @@ func findApplication(apps []models.Application, identifier string) (models.Appli
 	return models.Application{}, false
 }
 
-func (s *UninstallService) uninstallApplication(app models.Application) (int, int64, error) {
+func (s *UninstallService) uninstallApplication(app models.Application, report uninstallStepReporter) (int, int64, error) {
+	report(stepLocate, stepStatusRunning, "Scanning application files")
+
 	if app.Path == "" || !strings.HasSuffix(app.Path, ".app") {
+		report(stepLocate, stepStatusFailed, "This doesn't look like a valid app")
 		return 0, 0, errors.New("invalid app path")
 	}
 	if _, err := os.Stat(app.Path); err != nil {
+		report(stepLocate, stepStatusFailed, "Already removed — nothing left here")
 		return 0, 0, fmt.Errorf("app is not available: %w", err)
 	}
 
 	relatedFiles, err := s.GetRelatedFiles(app.Path)
 	if err != nil {
+		report(stepLocate, stepStatusFailed, "Couldn't read its support files")
 		return 0, 0, err
 	}
+	report(stepLocate, stepStatusSuccess, locatedSummary(len(relatedFiles)))
 
 	spaceFreed := app.Size
 	for _, relatedFile := range relatedFiles {
@@ -269,30 +292,78 @@ func (s *UninstallService) uninstallApplication(app models.Application) (int, in
 	}
 
 	if app.BrewCask != "" {
+		report(stepRemove, stepStatusRunning, "Removing with Homebrew")
 		if err := s.uninstallBrewCask(app); err != nil {
+			report(stepRemove, stepStatusFailed, friendlyRemovalError(err))
 			return 0, 0, err
 		}
-	} else if err := os.RemoveAll(app.Path); err != nil {
-		return 0, 0, err
+	} else {
+		report(stepRemove, stepStatusRunning, "Deleting application files")
+		if err := os.RemoveAll(app.Path); err != nil {
+			report(stepRemove, stepStatusFailed, "Couldn't delete it — quit the app and try again")
+			return 0, 0, err
+		}
 	}
 
 	if _, err := os.Stat(app.Path); err == nil {
+		report(stepRemove, stepStatusFailed, "Some files are locked — admin access may be needed")
 		return 0, 0, errors.New("app is still installed")
 	} else if !os.IsNotExist(err) {
+		report(stepRemove, stepStatusFailed, "Couldn't confirm it was removed")
 		return 0, 0, err
 	}
+	report(stepRemove, stepStatusSuccess, "Application deleted")
 
-	removedFiles := 1
+	report(stepCleanup, stepStatusRunning, "Clearing caches & preferences")
+	leftoverRemoved := 0
 	for _, relatedFile := range relatedFiles {
 		if !isUserLibraryPath(relatedFile) {
 			continue
 		}
 		if err := os.RemoveAll(relatedFile); err == nil {
-			removedFiles++
+			leftoverRemoved++
 		}
 	}
+	report(stepCleanup, stepStatusSuccess, cleanupSummary(leftoverRemoved))
 
-	return removedFiles, spaceFreed, nil
+	return leftoverRemoved + 1, spaceFreed, nil
+}
+
+func locatedSummary(count int) string {
+	switch count {
+	case 0:
+		return "No extra files found"
+	case 1:
+		return "Found 1 related item"
+	default:
+		return fmt.Sprintf("Found %d related items", count)
+	}
+}
+
+func cleanupSummary(count int) string {
+	switch count {
+	case 0:
+		return "Nothing left to clean"
+	case 1:
+		return "Removed 1 leftover file"
+	default:
+		return fmt.Sprintf("Removed %d leftover files", count)
+	}
+}
+
+func friendlyRemovalError(err error) string {
+	const maxLen = 120
+	message := strings.TrimSpace(err.Error())
+	if idx := strings.IndexByte(message, '\n'); idx != -1 {
+		message = strings.TrimSpace(message[:idx])
+	}
+	if message == "" {
+		return "Homebrew couldn't remove it"
+	}
+	if len(message) > maxLen {
+		message = strings.TrimSpace(message[:maxLen-1]) + "…"
+	}
+	return message
 }
 
 func (s *UninstallService) uninstallBrewCask(app models.Application) error {
@@ -314,12 +385,18 @@ func (s *UninstallService) uninstallBrewCask(app models.Application) error {
 }
 
 func (s *UninstallService) emitProgress(app string, message string, percent int, filesRemoved int, spaceFreed int64) {
+	s.emitStep(app, "", "", message, percent, filesRemoved, spaceFreed)
+}
+
+func (s *UninstallService) emitStep(app, step, status, message string, percent, filesRemoved int, spaceFreed int64) {
 	if s.ctx == nil {
 		return
 	}
 
 	runtime.EventsEmit(s.ctx, "uninstall:progress", models.UninstallProgress{
 		App:          app,
+		Step:         step,
+		Status:       status,
 		Message:      message,
 		Percent:      percent,
 		FilesRemoved: filesRemoved,
