@@ -18,6 +18,12 @@ import (
 
 const optimizeTaskTimeout = 5 * time.Minute
 
+const (
+	optimizeStatusRunning = "running"
+	optimizeStatusSuccess = "success"
+	optimizeStatusFailed  = "failed"
+)
+
 type optimizeTaskDef struct {
 	action       string
 	name         string
@@ -148,7 +154,7 @@ func (s *OptimizeService) SetContext(ctx context.Context) {
 	s.ctx = ctx
 }
 
-func (s *OptimizeService) emitProgress(taskID, message string, percent int) {
+func (s *OptimizeService) emitProgress(taskID, message string, percent int, status string) {
 	if s.ctx == nil {
 		return
 	}
@@ -157,6 +163,7 @@ func (s *OptimizeService) emitProgress(taskID, message string, percent int) {
 		Task:    taskID,
 		Message: message,
 		Percent: percent,
+		Status:  status,
 	})
 }
 
@@ -325,12 +332,12 @@ func (s *OptimizeService) ExecuteOptimizations(taskIDs []string, dryRun bool) er
 	completed := 0
 	errors := append([]string{}, resolutionErrors...)
 
-	s.emitProgress("", "Starting optimization...", 0)
+	s.emitProgress("", "Starting optimization...", 0, optimizeStatusRunning)
 
 	for index, action := range resolved {
 		taskName := s.taskName(action)
 		startPercent := (index * 100) / totalTasks
-		s.emitProgress(action, fmt.Sprintf("Running %s...", taskName), startPercent)
+		s.emitProgress(action, fmt.Sprintf("Running %s...", taskName), startPercent, optimizeStatusRunning)
 
 		output, err := s.runTask(action)
 		if err != nil {
@@ -339,7 +346,7 @@ func (s *OptimizeService) ExecuteOptimizations(taskIDs []string, dryRun bool) er
 			if message == "" {
 				message = fmt.Sprintf("%s failed", taskName)
 			}
-			s.emitProgress(action, message, startPercent)
+			s.emitProgress(action, message, startPercent, optimizeStatusFailed)
 			continue
 		}
 
@@ -349,10 +356,10 @@ func (s *OptimizeService) ExecuteOptimizations(taskIDs []string, dryRun bool) er
 		if message == "" {
 			message = fmt.Sprintf("%s complete", taskName)
 		}
-		s.emitProgress(action, message, endPercent)
+		s.emitProgress(action, message, endPercent, optimizeStatusSuccess)
 	}
 
-	s.emitProgress("", "Optimization complete", 100)
+	s.emitProgress("", "Optimization complete", 100, optimizeStatusSuccess)
 
 	result := models.OptimizeResult{
 		TasksCompleted: completed,

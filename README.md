@@ -70,10 +70,16 @@ Cleanup, uninstall, and optimization run through [Mole](https://github.com/tw93/
 ### Build for release
 
 ```bash
-wails build
+make build
 ```
 
 Output: `build/bin/mole-wails.app`
+
+`make build` runs a clean `wails build`, then ad-hoc signs the bundle and strips the macOS quarantine attribute so the app opens on double-click without a separate terminal step. Plain `wails build` still works, but a copy that gets zipped, moved, or downloaded may trigger a Gatekeeper "damaged or incomplete" warning because the app is ad-hoc signed rather than notarized (notarization requires a paid Apple Developer account). If that happens, run:
+
+```bash
+xattr -cr build/bin/mole-wails.app
+```
 
 ## Tech stack
 

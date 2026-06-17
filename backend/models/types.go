@@ -73,6 +73,7 @@ type OptimizeProgress struct {
 	Task    string `json:"task"`
 	Message string `json:"message"`
 	Percent int    `json:"percent"`
+	Status  string `json:"status"`
 }
 
 type OptimizeResult struct {

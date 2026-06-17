@@ -10,30 +10,47 @@ import AppButton from '../shared/AppButton.vue'
 import ConfirmDialog from '../shared/ConfirmDialog.vue'
 import LoadingPanel from '../shared/LoadingPanel.vue'
 import ProgressPanel from '../shared/ProgressPanel.vue'
-import ResultPanel from '../shared/ResultPanel.vue'
+import OptimizeProgressSteps from '../optimize/OptimizeProgressSteps.vue'
+
+const TECHNICAL_REASON = /exit status|:\s|\d{2,}/
 
 const tasks = ref([])
 const loading = ref(false)
 const optimizing = ref(false)
+const finished = ref(false)
 const progress = ref(0)
 const progressMessage = ref('')
 const result = ref(null)
+const steps = ref([])
 const showConfirmDialog = ref(false)
 const dryRun = ref(false)
 const preview = ref(null)
 
 const selectedTasks = computed(() => tasks.value.filter((task) => task.selected))
-const resultTitle = computed(() => {
-  if (!result.value?.errors?.length) return 'Optimization Complete'
-  if (result.value.tasksCompleted > 0) return 'Optimization Partial'
-  return 'Optimization Failed'
-})
-const resultDetail = computed(() => {
+const showSteps = computed(() => steps.value.length > 0 && (optimizing.value || finished.value))
+
+const summaryTitle = computed(() => {
   if (!result.value) return ''
-  const completed = `${result.value.tasksCompleted} tasks completed`
-  if (!result.value.errors?.length) return completed
-  return `${completed} · ${result.value.errors.join('; ')}`
+  if (!result.value.errors?.length) return 'All set'
+  if (result.value.tasksCompleted > 0) return 'Mostly done'
+  return "Couldn't optimize"
 })
+const summaryDetail = computed(() => {
+  if (!result.value) return ''
+  const done = result.value.tasksCompleted
+  const failed = (result.value.errors?.length) || 0
+  if (!failed) return `${done} ${done === 1 ? 'optimization' : 'optimizations'} finished.`
+  if (done > 0) return `${done} finished, ${failed} skipped.`
+  return 'No changes were made. Try again later.'
+})
+
+function failureDetail(message) {
+  const reason = (message || '').trim()
+  if (!reason || reason.length > 70 || TECHNICAL_REASON.test(reason)) {
+    return 'Skipped — no changes were made.'
+  }
+  return reason
+}
 
 onMounted(async () => {
   await getTasks()
@@ -41,11 +58,17 @@ onMounted(async () => {
   EventsOn('optimize:progress', (data) => {
     progress.value = data.percent
     progressMessage.value = data.message
+    if (!data.task) return
+    const step = steps.value.find((item) => item.id === data.task)
+    if (!step) return
+    step.status = data.status
+    step.detail = data.status === 'failed' ? failureDetail(data.message) : ''
   })
 
   EventsOn('optimize:complete', (data) => {
     optimizing.value = false
     result.value = data
+    if (steps.value.length > 0) finished.value = true
   })
 })
 
@@ -75,14 +98,28 @@ function requestOptimize() {
 
 async function optimize() {
   optimizing.value = true
+  finished.value = false
+  result.value = null
   progress.value = 0
   progressMessage.value = 'Starting optimization...'
-  const taskIDs = selectedTasks.value.map((task) => task.id)
+  const selection = selectedTasks.value
+  const taskIDs = selection.map((task) => task.id)
+
+  if (!dryRun.value) {
+    steps.value = selection.map((task) => ({
+      id: task.id,
+      name: task.name,
+      description: task.description,
+      status: 'pending',
+      detail: '',
+    }))
+  } else {
+    steps.value = []
+  }
 
   try {
     if (dryRun.value) {
       preview.value = await OptimizePreview(taskIDs)
-      result.value = null
     } else {
       await OptimizeExecute(taskIDs)
       preview.value = null
@@ -90,11 +127,18 @@ async function optimize() {
   } catch (error) {
     handleError(error, 'Optimize')
     optimizing.value = false
+    steps.value = []
   } finally {
     if (dryRun.value) {
       optimizing.value = false
     }
   }
+}
+
+function dismiss() {
+  finished.value = false
+  result.value = null
+  steps.value = []
 }
 
 function toggleTask(task) {
@@ -132,17 +176,23 @@ function deselectAll() {
 
     <LoadingPanel v-if="loading" message="Loading tasks" />
 
+    <div v-else-if="showSteps" class="optimize-run">
+      <OptimizeProgressSteps :steps="steps" :percent="progress" />
+      <Transition name="summary">
+        <div v-if="finished" class="run-summary">
+          <div class="run-summary__text">
+            <span class="run-summary__title">{{ summaryTitle }}</span>
+            <span class="run-summary__detail">{{ summaryDetail }}</span>
+          </div>
+          <AppButton variant="primary" @click="dismiss">Done</AppButton>
+        </div>
+      </Transition>
+    </div>
+
     <ProgressPanel
       v-else-if="optimizing"
       :progress="progress"
       :message="progressMessage"
-    />
-
-    <ResultPanel
-      v-else-if="result"
-      :title="resultTitle"
-      :detail="resultDetail"
-      @action="result = null"
     />
 
     <div v-else class="optimize-content">
@@ -267,5 +317,56 @@ function deselectAll() {
   margin: 0;
   color: var(--color-text-secondary);
   font-size: var(--font-size-caption);
+}
+
+.optimize-run {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.run-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.run-summary__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.run-summary__title {
+  font-size: var(--font-size-body);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.run-summary__detail {
+  font-size: var(--font-size-caption);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.summary-enter-active {
+  transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.summary-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .summary-enter-active {
+    transition: none;
+  }
 }
 </style>
